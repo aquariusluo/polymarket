@@ -10,10 +10,18 @@ from dashboard.api.database import PROJECT_ROOT, get_db, read_json_report
 router = APIRouter(prefix='/api')
 
 
+def _get_execution_mode(manifest: dict) -> str:
+    for item in manifest.get('schema', []):
+        if item.get('key') == 'execution_mode':
+            return item.get('default', 'manual_confirm')
+    return 'manual_confirm'
+
+
 @router.get('/overview')
 def get_overview(conn: sqlite3.Connection = Depends(get_db)):
     summary = read_json_report(PROJECT_ROOT / '.scarf' / 'reports' / 'latest-summary.json')
     gate = read_json_report(PROJECT_ROOT / '.scarf' / 'reports' / 'auto-follow-gate.json')
+    manifest = read_json_report(PROJECT_ROOT / '.scarf' / 'manifest.json')
 
     rows = conn.execute(
         'SELECT * FROM job_runs ORDER BY id DESC LIMIT 10'
@@ -29,7 +37,7 @@ def get_overview(conn: sqlite3.Connection = Depends(get_db)):
             break
 
     return {
-        'execution_mode': summary.get('execution_mode', 'unknown'),
+        'execution_mode': _get_execution_mode(manifest) or summary.get('execution_mode', 'unknown'),
         'bankroll_usd': 1000.0,
         'total_equity': summary.get('total_equity', 0.0),
         'total_unrealized_pnl': summary.get('total_unrealized_pnl', 0.0),
