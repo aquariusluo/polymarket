@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+prompt="${*:-Review current repository changes without editing files. Focus on connection sharing in app/jobs and decimal TEXT persistence in app/storage. Return findings by severity with file:line refs. Keep concise.}"
+
+CLAUDE_CODE_WORKFLOWS=1 claude \
+  --disable-slash-commands \
+  --dangerously-skip-permissions \
+  -p "$prompt"

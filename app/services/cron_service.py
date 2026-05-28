@@ -1,0 +1,29 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+
+def project_root_path(project_root: str | Path | None = None) -> Path:
+    return Path(project_root) if project_root is not None else Path.cwd()
+
+
+def write_default_cron_jobs(project_root: str | Path | None = None) -> str:
+    root = project_root_path(project_root)
+    cron_dir = root / 'cron'
+    cron_dir.mkdir(parents=True, exist_ok=True)
+    path = cron_dir / 'jobs.json'
+    jobs = [
+        {
+            'name': 'Polymarket leader/order monitor',
+            'schedule': '*/5 * * * *',
+            'prompt': 'Read {{PROJECT_DIR}}/.scarf/config.json if it exists. Use values.leader_selection_mode, values.top_accounts_override, values.excluded_wallets, values.execution_mode, values.bankroll_usd, values.max_copy_usd_per_order, values.max_daily_orders, and values.slippage_bps. Determine the 5 accounts to watch: if leader_selection_mode is fixed_override, use top_accounts_override; otherwise inspect the configured leaderboard source and refresh the current top 5 profitable Polymarket accounts. Check those accounts for newly observed orders since the previous run, then rewrite {{PROJECT_DIR}}/.scarf/reports/latest-summary.md and {{PROJECT_DIR}}/.scarf/reports/detection.log with an atomic write. Update {{PROJECT_DIR}}/.scarf/dashboard.json by title so Execution Mode, Tracked Leaders, Copy Bankroll (USD), 60-Day PnL, and Top 5 Source Accounts reflect the latest state. If execution_mode is alert_only, only recommend actions. If execution_mode is manual_confirm, prepare suggested copy trades but do not execute. If execution_mode is auto_follow but no audited execution instructions exist in AGENTS.md, degrade to manual_confirm and say so explicitly.'
+        },
+        {
+            'name': 'Polymarket performance review',
+            'schedule': '0 21 * * *',
+            'prompt': 'Read {{PROJECT_DIR}}/.scarf/config.json if it exists. Use values.bankroll_usd, values.evaluation_start_date, values.evaluation_days, and values.operator_notes. Review {{PROJECT_DIR}}/.scarf/reports/latest-summary.md plus any locally stored trade/performance notes, then rewrite {{PROJECT_DIR}}/.scarf/reports/performance-review.md with cumulative notional, estimated or realized PnL, hit rate, drawdown commentary, and whether the strategy appears viable. Update the Cumulative Copy PnL chart data and the 60-Day PnL stat in {{PROJECT_DIR}}/.scarf/dashboard.json by title. If the elapsed time since evaluation_start_date is at least evaluation_days, include a clearly labeled final evaluation section for the completed window.'
+        },
+    ]
+    path.write_text(json.dumps(jobs, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    return str(path)

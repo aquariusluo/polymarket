@@ -25,6 +25,11 @@ venv/
 node_modules/
 dist/
 
+# OMC / Claude
+.omc/
+.vite/
+.write_test
+
 # OS
 .DS_Store
 Thumbs.db
@@ -32,3 +37,9 @@ Thumbs.db
 # Scarf local state
 .scarf/dashboard.json
 .scarf/reports/
+
+# Temp / logs
+tmp/
+
+# Review artifacts
+review-*.md

@@ -1,0 +1,1 @@
+"""Polymarket copytrader MVP package."""

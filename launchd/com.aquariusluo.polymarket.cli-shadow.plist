@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.aquariusluo.polymarket.cli-shadow</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/aquariusluo/projects/polymarket/scripts/run_polymarket_cli_monitor.py</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/aquariusluo/projects/polymarket</string>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/aquariusluo/projects/polymarket/tmp/polymarket-cli-shadow.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/aquariusluo/projects/polymarket/tmp/polymarket-cli-shadow.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DATA_SOURCE</key>
+    <string>polymarket_cli</string>
+    <key>DB_PATH</key>
+    <string>data/app.db</string>
+    <key>TRADE_FETCH_LIMIT</key>
+    <string>5</string>
+    <key>SIGNAL_BATCH_LIMIT</key>
+    <string>10</string>
+    <key>MONITOR_STEP_TIMEOUT_SECONDS</key>
+    <string>180</string>
+    <key>RUN_LOOP_MAX_ITERATIONS</key>
+    <string>1</string>
+    <key>RUN_LOOP_SLEEP_SECONDS</key>
+    <string>0</string>
+  </dict>
+</dict>
+</plist>
