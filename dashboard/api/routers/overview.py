@@ -1,28 +1,19 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
 import sqlite3
 
-from dashboard.api.database import get_db
+from dashboard.api.database import PROJECT_ROOT, get_db, read_json_report
 
 router = APIRouter(prefix='/api')
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-
-
-def _read_json(path: Path) -> dict:
-    if not path.exists():
-        return {}
-    return json.loads(path.read_text(encoding='utf-8'))
 
 
 @router.get('/overview')
 def get_overview(conn: sqlite3.Connection = Depends(get_db)):
-    summary = _read_json(PROJECT_ROOT / '.scarf' / 'reports' / 'latest-summary.json')
-    gate = _read_json(PROJECT_ROOT / '.scarf' / 'reports' / 'auto-follow-gate.json')
+    summary = read_json_report(PROJECT_ROOT / '.scarf' / 'reports' / 'latest-summary.json')
+    gate = read_json_report(PROJECT_ROOT / '.scarf' / 'reports' / 'auto-follow-gate.json')
 
     rows = conn.execute(
         'SELECT * FROM job_runs ORDER BY id DESC LIMIT 10'

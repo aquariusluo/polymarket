@@ -7,34 +7,50 @@ import type { JobRun, MonitorEvent } from '../types'
 
 const runs = ref<JobRun[]>([])
 const monitorLog = ref<MonitorEvent[]>([])
-const loading = ref(true)
-const { lastRefreshed } = useRefresh(fetch)
+const { lastRefreshed, isLoading, isRefetching, error, refresh } = useRefresh(fetch)
 
 async function fetch() {
   const [r, m] = await Promise.all([api.getJobRuns(), api.getMonitorLog()])
   runs.value = r
   monitorLog.value = m
-  loading.value = false
 }
 
-const fmtDuration = (ms: number | null) => ms != null ? `${(ms / 1000).toFixed(1)}s` : '—'
+const fmtDuration = (s: number | null) => s != null ? `${s.toFixed(1)}s` : '—'
 const fmtTime = (s: string | null) => s ? new Date(s).toLocaleString() : '—'
 </script>
 
 <template>
   <div>
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">Pipeline</h1>
-      <span v-if="lastRefreshed" class="text-xs text-gray-500">
-        Updated {{ lastRefreshed.toLocaleTimeString() }}
-      </span>
+      <div class="flex items-center gap-4">
+        <h1 class="text-2xl font-bold text-white">Pipeline</h1>
+        <span v-if="isRefetching" class="text-xs text-blue-400 animate-pulse">Refreshing...</span>
+      </div>
+      <div class="flex flex-col items-end">
+        <span v-if="lastRefreshed" class="text-xs text-gray-500">
+          Updated {{ lastRefreshed.toLocaleTimeString() }}
+        </span>
+        <button v-if="error" @click="refresh" class="text-xs text-red-400 underline hover:text-red-300">
+          Retry
+        </button>
+      </div>
     </div>
 
-    <div v-if="loading" class="text-gray-400">Loading...</div>
+    <!-- Error Alert -->
+    <div v-if="error && !runs.length" class="bg-red-900/20 border border-red-800 text-red-400 p-4 rounded-lg mb-6 flex justify-between items-center">
+      <span>Failed to load pipeline data. {{ error.message }}</span>
+      <button @click="refresh" class="bg-red-800 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition">
+        Retry
+      </button>
+    </div>
 
-    <template v-else>
-      <h2 class="text-sm font-semibold text-gray-300 mb-3">Job Runs</h2>
-      <div class="overflow-x-auto mb-8">
+    <div v-if="isLoading" class="text-gray-400 animate-pulse py-8 text-center">
+      Loading pipeline status...
+    </div>
+
+    <template v-else-if="runs.length || monitorLog.length">
+      <h2 v-if="runs.length" class="text-sm font-semibold text-gray-300 mb-3">Job Runs</h2>
+      <div v-if="runs.length" class="overflow-x-auto mb-8">
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-gray-400 border-b border-gray-700">
@@ -59,8 +75,8 @@ const fmtTime = (s: string | null) => s ? new Date(s).toLocaleString() : '—'
         </table>
       </div>
 
-      <h2 class="text-sm font-semibold text-gray-300 mb-3">Monitor Log</h2>
-      <div class="space-y-1 max-h-96 overflow-y-auto">
+      <h2 v-if="monitorLog.length" class="text-sm font-semibold text-gray-300 mb-3">Monitor Log</h2>
+      <div v-if="monitorLog.length" class="space-y-1 max-h-96 overflow-y-auto">
         <div
           v-for="(entry, i) in monitorLog"
           :key="i"
@@ -72,5 +88,8 @@ const fmtTime = (s: string | null) => s ? new Date(s).toLocaleString() : '—'
         </div>
       </div>
     </template>
+    <div v-else-if="!error" class="text-center py-12 text-gray-500 bg-gray-800 rounded-lg">
+      No pipeline activity recorded yet.
+    </div>
   </div>
 </template>

@@ -2,15 +2,31 @@ import { ref, onMounted, onUnmounted } from 'vue'
 
 export function useRefresh(fetchFn: () => Promise<void>, intervalMs = 30_000) {
   const lastRefreshed = ref<Date | null>(null)
+  const isLoading = ref(true)
+  const isRefetching = ref(false)
+  const error = ref<Error | null>(null)
   const isPolling = ref(false)
   let timer: ReturnType<typeof setInterval> | null = null
 
   async function fetch() {
+    const isInitial = !lastRefreshed.value && !error.value
+    if (isInitial) {
+      isLoading.value = true
+    } else {
+      isRefetching.value = true
+    }
+    
+    error.value = null
+    
     try {
       await fetchFn()
       lastRefreshed.value = new Date()
-    } catch {
-      // retry on next interval
+    } catch (e) {
+      console.error('Refresh failed:', e)
+      error.value = e instanceof Error ? e : new Error(String(e))
+    } finally {
+      isLoading.value = false
+      isRefetching.value = false
     }
   }
 
@@ -32,5 +48,14 @@ export function useRefresh(fetchFn: () => Promise<void>, intervalMs = 30_000) {
   onMounted(() => startPolling())
   onUnmounted(() => stopPolling())
 
-  return { lastRefreshed, isPolling, startPolling, stopPolling }
+  return { 
+    lastRefreshed, 
+    isLoading, 
+    isRefetching, 
+    error, 
+    isPolling, 
+    startPolling, 
+    stopPolling,
+    refresh: fetch 
+  }
 }

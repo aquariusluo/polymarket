@@ -7,12 +7,10 @@ import type { Leader, LeaderTrade } from '../types'
 const leaders = ref<Leader[]>([])
 const selectedTrades = ref<LeaderTrade[]>([])
 const selectedLeader = ref<string | null>(null)
-const loading = ref(true)
-const { lastRefreshed } = useRefresh(fetch)
+const { lastRefreshed, isLoading, isRefetching, error, refresh } = useRefresh(fetch)
 
 async function fetch() {
   leaders.value = await api.getLeaders()
-  loading.value = false
 }
 
 async function showTrades(wallet: string) {
@@ -29,15 +27,33 @@ async function showTrades(wallet: string) {
 <template>
   <div>
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">Leaders</h1>
-      <span v-if="lastRefreshed" class="text-xs text-gray-500">
-        Updated {{ lastRefreshed.toLocaleTimeString() }}
-      </span>
+      <div class="flex items-center gap-4">
+        <h1 class="text-2xl font-bold text-white">Leaders</h1>
+        <span v-if="isRefetching" class="text-xs text-blue-400 animate-pulse">Refreshing...</span>
+      </div>
+      <div class="flex flex-col items-end">
+        <span v-if="lastRefreshed" class="text-xs text-gray-500">
+          Updated {{ lastRefreshed.toLocaleTimeString() }}
+        </span>
+        <button v-if="error" @click="refresh" class="text-xs text-red-400 underline hover:text-red-300">
+          Retry
+        </button>
+      </div>
     </div>
 
-    <div v-if="loading" class="text-gray-400">Loading...</div>
+    <!-- Error Alert -->
+    <div v-if="error && !leaders.length" class="bg-red-900/20 border border-red-800 text-red-400 p-4 rounded-lg mb-6 flex justify-between items-center">
+      <span>Failed to load leaders. {{ error.message }}</span>
+      <button @click="refresh" class="bg-red-800 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition">
+        Retry
+      </button>
+    </div>
 
-    <template v-else>
+    <div v-if="isLoading" class="text-gray-400 animate-pulse py-8 text-center">
+      Loading leaders data...
+    </div>
+
+    <template v-else-if="leaders.length">
       <table class="w-full text-sm">
         <thead>
           <tr class="text-left text-gray-400 border-b border-gray-700">
@@ -93,5 +109,8 @@ async function showTrades(wallet: string) {
         </table>
       </div>
     </template>
+    <div v-else-if="!error" class="text-center py-12 text-gray-500">
+      No leaders tracked yet.
+    </div>
   </div>
 </template>

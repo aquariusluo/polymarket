@@ -7,12 +7,10 @@ import StatusBadge from '../components/StatusBadge.vue'
 import type { OverviewData } from '../types'
 
 const data = ref<OverviewData | null>(null)
-const loading = ref(true)
-const { lastRefreshed } = useRefresh(fetch)
+const { lastRefreshed, isLoading, isRefetching, error, refresh } = useRefresh(fetch)
 
 async function fetch() {
   data.value = await api.getOverview()
-  loading.value = false
 }
 
 const pnlColor = (v: number) => v >= 0 ? 'text-green-400' : 'text-red-400'
@@ -22,13 +20,32 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
 <template>
   <div>
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-bold text-white">Overview</h1>
-      <span v-if="lastRefreshed" class="text-xs text-gray-500">
-        Updated {{ lastRefreshed.toLocaleTimeString() }}
-      </span>
+      <div class="flex items-center gap-4">
+        <h1 class="text-2xl font-bold text-white">Overview</h1>
+        <span v-if="isRefetching" class="text-xs text-blue-400 animate-pulse">Refreshing...</span>
+      </div>
+      <div class="flex flex-col items-end">
+        <span v-if="lastRefreshed" class="text-xs text-gray-500">
+          Updated {{ lastRefreshed.toLocaleTimeString() }}
+        </span>
+        <button v-if="error" @click="refresh" class="text-xs text-red-400 underline hover:text-red-300">
+          Retry
+        </button>
+      </div>
     </div>
 
-    <div v-if="loading" class="text-gray-400">Loading...</div>
+    <!-- Error Alert -->
+    <div v-if="error && !data" class="bg-red-900/20 border border-red-800 text-red-400 p-4 rounded-lg mb-6 flex justify-between items-center">
+      <span>Failed to load overview data. {{ error.message }}</span>
+      <button @click="refresh" class="bg-red-800 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition">
+        Retry
+      </button>
+    </div>
+
+    <div v-if="isLoading" class="text-gray-400 animate-pulse py-8 text-center">
+      <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500 mr-2"></div>
+      Loading dashboard overview...
+    </div>
 
     <template v-else-if="data">
       <div class="grid grid-cols-4 gap-4 mb-6">
@@ -60,5 +77,8 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
         </ul>
       </div>
     </template>
+    <div v-else-if="!error" class="text-center py-12 text-gray-500 bg-gray-800 rounded-lg">
+      No overview data available.
+    </div>
   </div>
 </template>

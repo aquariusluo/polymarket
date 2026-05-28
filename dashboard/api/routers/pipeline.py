@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Query
 import sqlite3
 
-from dashboard.api.database import get_db
+from dashboard.api.database import PROJECT_ROOT, get_db
 
 router = APIRouter(prefix='/api')
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MONITOR_LOG = PROJECT_ROOT / 'tmp' / 'polymarket-cli-monitor.jsonl'
 
 
@@ -30,9 +30,9 @@ def get_job_runs(conn: sqlite3.Connection = Depends(get_db), limit: int = Query(
         if finished and started:
             try:
                 duration = round(
-                    (json.loads(f'"{finished}"') - json.loads(f'"{started}"')).total_seconds(), 1
+                    (datetime.fromisoformat(finished) - datetime.fromisoformat(started)).total_seconds(), 1
                 )
-            except Exception:
+            except (ValueError, TypeError):
                 duration = None
         runs.append({
             'id': d.get('id'),

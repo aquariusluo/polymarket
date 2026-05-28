@@ -8,6 +8,18 @@ const navItems = [
   { to: '/leaders', label: 'Leaders', icon: '🐺' },
   { to: '/pipeline', label: 'Pipeline', icon: '⚙' },
 ]
+
+const routeModules: Record<string, () => Promise<unknown>> = {
+  '/overview': () => import('./views/OverviewView.vue'),
+  '/portfolio': () => import('./views/PortfolioView.vue'),
+  '/signals': () => import('./views/SignalsView.vue'),
+  '/leaders': () => import('./views/LeadersView.vue'),
+  '/pipeline': () => import('./views/PipelineView.vue'),
+}
+
+function preloadRoute(path: string) {
+  routeModules[path]?.()
+}
 </script>
 
 <template>
@@ -24,6 +36,7 @@ const navItems = [
           :to="item.to"
           class="flex items-center gap-3 px-5 py-2.5 text-sm hover:bg-gray-800 transition-colors text-gray-400"
           :class="$route.path === item.to ? 'bg-gray-800 text-white' : ''"
+          @mouseenter="preloadRoute(item.to)"
         >
           <span class="text-lg">{{ item.icon }}</span>
           {{ item.label }}

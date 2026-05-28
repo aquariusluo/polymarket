@@ -1,9 +1,17 @@
 const BASE = ''
+const MAX_RETRIES = 2
 
 async function request<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) throw new Error(`API error: ${res.status}`)
-  return res.json() as Promise<T>
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(`${BASE}${path}`)
+    if (res.ok) return res.json() as Promise<T>
+    if (res.status >= 500 && attempt < MAX_RETRIES) {
+      await new Promise((r) => setTimeout(r, 300 * (attempt + 1)))
+      continue
+    }
+    throw new Error(`API error: ${res.status}`)
+  }
+  throw new Error('API unavailable after retries')
 }
 
 export default {
