@@ -13,6 +13,7 @@ export interface OverviewData {
   gate_status: string
   gate_decision: string
   gate_notes: string[]
+  gate_thresholds: Record<string, number>
   last_pipeline_at: string | null
   pipeline_status: string | null
 }

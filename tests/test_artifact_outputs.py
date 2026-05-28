@@ -7,7 +7,7 @@ from pathlib import Path
 from app.storage.db import get_connection, init_db
 
 
-def _insert_gate_signal(conn, *, tx_hash: str, detected_at: str, status: str | None = None, reason: str | None = None) -> None:
+def _insert_gate_signal(conn, *, tx_hash: str, detected_at: str, status: str | None = None, reason: str | None = None, condition_id: str = 'cond-gate') -> None:
     conn.execute(
         """
         INSERT INTO leader_trades (
@@ -16,7 +16,7 @@ def _insert_gate_signal(conn, *, tx_hash: str, detected_at: str, status: str | N
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            '0xleader', 'alice', tx_hash, 'cond-gate', f'asset-{tx_hash}', 'BUY',
+            '0xleader', 'alice', tx_hash, condition_id, f'asset-{tx_hash}', 'BUY',
             '1.000000', '0.500000', detected_at, 'Gate market', 'gate-market', '{}', detected_at,
         ),
     )
@@ -29,7 +29,7 @@ def _insert_gate_signal(conn, *, tx_hash: str, detected_at: str, status: str | N
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            trade_id, '0xleader', 'alice', 'cond-gate', f'asset-{tx_hash}', 'gate-market',
+            trade_id, '0xleader', 'alice', condition_id, f'asset-{tx_hash}', 'gate-market',
             'BUY', '0.500000', 'accepted', 'accepted', detected_at, '{}',
         ),
     )
@@ -44,7 +44,7 @@ def _insert_gate_signal(conn, *, tx_hash: str, detected_at: str, status: str | N
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                signal_id, 'cond-gate', f'asset-{tx_hash}', 'gate-market', 'BUY',
+                signal_id, condition_id, f'asset-{tx_hash}', 'gate-market', 'BUY',
                 '10.00', '10.00' if status == 'filled' else '0.00',
                 '20.000000' if status == 'filled' else '0.000000',
                 '0.500000' if status == 'filled' else None,
@@ -200,7 +200,7 @@ def test_gate_report_writes_hold_decision_when_no_fills(tmp_path: Path, settings
     payload = json.loads(gate_json.read_text(encoding='utf-8'))
     assert payload['filled_orders_window'] == 0
     assert payload['slippage_reject_ratio'] == 1.0
-    assert 'Not enough filled samples' in gate_md.read_text(encoding='utf-8')
+    assert 'Only 0 fills in 72h window' in gate_md.read_text(encoding='utf-8')
 
 
 def test_gate_report_passes_when_recent_fills_meet_thresholds(tmp_path: Path, settings_factory):
@@ -215,8 +215,8 @@ def test_gate_report_passes_when_recent_fills_meet_thresholds(tmp_path: Path, se
     now = datetime.now(timezone.utc).isoformat()
 
     with get_connection(str(db_path)) as conn:
-        for idx in range(3):
-            _insert_gate_signal(conn, tx_hash=f'pass-{idx}', detected_at=now, status='filled', reason='filled')
+        for idx in range(10):
+            _insert_gate_signal(conn, tx_hash=f'pass-{idx}', detected_at=now, status='filled', reason='filled', condition_id=f'cond-gate-{idx}')
         conn.commit()
 
     result = run_gate_report.run(settings, project_root=str(project_dir))
@@ -224,5 +224,5 @@ def test_gate_report_passes_when_recent_fills_meet_thresholds(tmp_path: Path, se
     assert result['status'] == 'pass'
     assert result['decision'] == 'auto_follow_candidate'
     payload = json.loads((report_dir / 'auto-follow-gate.json').read_text(encoding='utf-8'))
-    assert payload['filled_orders_window'] == 3
-    assert payload['notes'] == ['Gate conditions met in current window.']
+    assert payload['filled_orders_window'] == 10
+    assert payload['notes'] == ['All gate conditions met in current window.']

@@ -51,6 +51,7 @@ def get_overview(conn: sqlite3.Connection = Depends(get_db)):
         'gate_status': gate.get('status', 'unknown'),
         'gate_decision': gate.get('decision', ''),
         'gate_notes': gate.get('notes', []),
+        'gate_thresholds': gate.get('thresholds', {}),
         'last_pipeline_at': latest_run.get('finished_at') if latest_run else None,
         'pipeline_status': latest_run.get('status') if latest_run else None,
     }

@@ -72,6 +72,11 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
           <span>Mode: <span class="text-gray-300">{{ data.execution_mode }}</span></span>
           <span>Pipeline: <span class="text-gray-300">{{ data.pipeline_status ?? 'idle' }}</span></span>
         </div>
+        <div v-if="Object.keys(data.gate_thresholds).length" class="grid grid-cols-3 gap-2 mb-3 text-xs text-gray-500">
+          <div>Fills needed: <span class="text-gray-300">{{ data.gate_thresholds.min_filled_orders_window }}</span></div>
+          <div>Max ratio: <span class="text-gray-300">{{ data.gate_thresholds.max_accept_to_fill_ratio }}:1</span></div>
+          <div>Max drawdown: <span class="text-gray-300">{{ data.gate_thresholds.max_drawdown_pct }}%</span></div>
+        </div>
         <ul v-if="data.gate_notes.length" class="list-disc list-inside text-xs text-gray-400 space-y-0.5">
           <li v-for="(note, i) in data.gate_notes" :key="i">{{ note }}</li>
         </ul>
