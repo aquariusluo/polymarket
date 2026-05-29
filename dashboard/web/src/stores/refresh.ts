@@ -6,18 +6,22 @@ export function useRefresh(fetchFn: () => Promise<void>, intervalMs = 30_000) {
   const isRefetching = ref(false)
   const error = ref<Error | null>(null)
   const isPolling = ref(false)
+  const isFetching = ref(false)
   let timer: ReturnType<typeof setInterval> | null = null
 
   async function fetch() {
+    if (isFetching.value) return
+    isFetching.value = true
+
     const isInitial = !lastRefreshed.value && !error.value
     if (isInitial) {
       isLoading.value = true
     } else {
       isRefetching.value = true
     }
-    
+
     error.value = null
-    
+
     try {
       await fetchFn()
       lastRefreshed.value = new Date()
@@ -25,6 +29,7 @@ export function useRefresh(fetchFn: () => Promise<void>, intervalMs = 30_000) {
       console.error('Refresh failed:', e)
       error.value = e instanceof Error ? e : new Error(String(e))
     } finally {
+      isFetching.value = false
       isLoading.value = false
       isRefetching.value = false
     }

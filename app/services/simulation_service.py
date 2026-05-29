@@ -106,7 +106,7 @@ class SimulationService:
 
             total_cost_basis = money(self.position_repo.total_cost_basis())
             remaining_bankroll = money(bankroll - total_cost_basis)
-            if remaining_bankroll <= 0 or requested_notional > remaining_bankroll:
+            if remaining_bankroll <= 0:
                 self._reject(
                     signal_id=signal_id, condition_id=condition_id, asset_id=asset_id,
                     market_slug=market_slug, side=side, requested_notional=requested_notional,

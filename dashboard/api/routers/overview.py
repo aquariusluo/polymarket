@@ -14,7 +14,19 @@ def _get_execution_mode(manifest: dict) -> str:
     for item in manifest.get('schema', []):
         if item.get('key') == 'execution_mode':
             return item.get('default', 'manual_confirm')
+    if 'execution_mode' in manifest:
+        return manifest['execution_mode']
     return 'manual_confirm'
+
+
+def _get_bankroll(manifest: dict) -> float:
+    for item in manifest.get('schema', []):
+        if item.get('key') == 'bankroll_usd':
+            try:
+                return float(item.get('default', 1000.0))
+            except (TypeError, ValueError):
+                return 1000.0
+    return 1000.0
 
 
 @router.get('/overview')
@@ -23,11 +35,18 @@ def get_overview(conn: sqlite3.Connection = Depends(get_db)):
     gate = read_json_report(PROJECT_ROOT / '.scarf' / 'reports' / 'auto-follow-gate.json')
     manifest = read_json_report(PROJECT_ROOT / '.scarf' / 'manifest.json')
 
-    rows = conn.execute(
-        'SELECT * FROM job_runs ORDER BY id DESC LIMIT 10'
-    ).fetchall()
+    try:
+        rows = conn.execute(
+            'SELECT * FROM job_runs ORDER BY id DESC LIMIT 10'
+        ).fetchall()
+    except sqlite3.OperationalError:
+        rows = []
 
-    leader_count = conn.execute('SELECT COUNT(*) FROM leaders').fetchone()[0]
+    leader_count = 0
+    try:
+        leader_count = conn.execute('SELECT COUNT(*) FROM leaders').fetchone()[0]
+    except sqlite3.OperationalError:
+        pass
 
     latest_run = None
     for r in rows:
@@ -37,8 +56,8 @@ def get_overview(conn: sqlite3.Connection = Depends(get_db)):
             break
 
     return {
-        'execution_mode': _get_execution_mode(manifest) or summary.get('execution_mode', 'unknown'),
-        'bankroll_usd': 1000.0,
+        'execution_mode': _get_execution_mode(manifest),
+        'bankroll_usd': _get_bankroll(manifest),
         'total_equity': summary.get('total_equity', 0.0),
         'total_unrealized_pnl': summary.get('total_unrealized_pnl', 0.0),
         'total_realized_pnl': summary.get('total_realized_pnl', 0.0),

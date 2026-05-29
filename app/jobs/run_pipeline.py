@@ -24,7 +24,7 @@ def _default_steps() -> Mapping[str, Callable[..., dict[str, Any]]]:
 
 
 def run(settings=None, *, steps: Mapping[str, Callable[..., dict[str, Any]]] | None = None, max_iterations: int | None = None, sleep_seconds: int | None = None, project_root=None, **kwargs) -> dict:
-    settings = settings or get_settings()
+    settings = settings or get_settings(project_root)
     steps = steps or _default_steps()
 
     def _invoke(fn: Callable[..., dict[str, Any]], conn) -> dict:

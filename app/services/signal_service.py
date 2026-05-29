@@ -100,13 +100,12 @@ class SignalService:
             inserted_now = self.signal_repo.insert_if_new(trade, decision)
             if inserted_now:
                 inserted += 1
+                if decision.decision is Decision.ACCEPTED:
+                    accepted += 1
+                else:
+                    rejected += 1
             else:
                 skipped += 1
-
-            if decision.decision is Decision.ACCEPTED:
-                accepted += 1
-            else:
-                rejected += 1
 
         return SignalRunResult(
             processed_count=processed,
