@@ -10,6 +10,7 @@ import httpx
 
 from app.config import Settings
 from app.domain.money import money, pct, price, shares, to_decimal, to_float
+from app.domain.models import normalize_side, Side
 from app.services.market_service import MarketService
 from app.storage.repositories import PositionRepository, SignalRepository, SimOrderRepository
 
@@ -77,9 +78,20 @@ class SimulationService:
             asset_id = str(row['asset_id'])
             market_slug = row['market_slug']
             side = row['side']
+            normalized_side = normalize_side(side)
             leader_price = price(row['leader_price']) if row['leader_price'] is not None else None
             requested_notional = money(self.settings.fixed_trade_usdc)
             signal_id = int(row['id'])
+
+            if normalized_side is not Side.BUY:
+                self._reject(
+                    signal_id=signal_id, condition_id=condition_id, asset_id=asset_id,
+                    market_slug=market_slug, side=side, requested_notional=requested_notional,
+                    leader_price=leader_price, reason='unsupported_side',
+                )
+                inserted_orders += 1
+                rejected += 1
+                continue
 
             start_of_day = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
             filled_today = self.order_repo.count_filled_since(start_of_day)
@@ -104,7 +116,7 @@ class SimulationService:
                 rejected += 1
                 continue
 
-            total_cost_basis = money(self.position_repo.total_cost_basis())
+            total_cost_basis = self.position_repo.total_cost_basis_decimal()
             remaining_bankroll = money(bankroll - total_cost_basis)
             if remaining_bankroll <= 0:
                 self._reject(
@@ -116,7 +128,7 @@ class SimulationService:
                 rejected += 1
                 continue
 
-            current_cost = money(self.position_repo.current_market_cost_basis(condition_id))
+            current_cost = self.position_repo.current_market_cost_basis_decimal(condition_id)
             remaining_capacity = money(to_decimal(self.settings.per_market_cap_usdc) - current_cost)
             if remaining_capacity <= 0:
                 self._reject(
@@ -194,12 +206,12 @@ class SimulationService:
                     if refreshed_filled_today >= self.settings.scarf.max_daily_orders:
                         deferred_rejection_reason = 'max_daily_orders_exceeded'
                     else:
-                        refreshed_total_cost = money(self.position_repo.total_cost_basis())
+                        refreshed_total_cost = self.position_repo.total_cost_basis_decimal()
                         refreshed_remaining_bankroll = money(bankroll - refreshed_total_cost)
                         if refreshed_remaining_bankroll <= 0 or requested_notional > refreshed_remaining_bankroll:
                             deferred_rejection_reason = 'bankroll_exceeded'
                         else:
-                            refreshed_current_cost = money(self.position_repo.current_market_cost_basis(condition_id))
+                            refreshed_current_cost = self.position_repo.current_market_cost_basis_decimal(condition_id)
                             refreshed_remaining_capacity = money(to_decimal(self.settings.per_market_cap_usdc) - refreshed_current_cost)
                             if refreshed_remaining_capacity <= 0:
                                 deferred_rejection_reason = 'per_market_cap_exceeded'

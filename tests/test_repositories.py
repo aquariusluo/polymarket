@@ -216,6 +216,35 @@ def test_portfolio_snapshot_repository_supports_summary_queries_and_empty_bounda
     assert round(repo.compute_drawdown_pct(70.0), 2) == round(((110.0 - 70.0) / 110.0) * 100.0, 2)
 
 
+def test_portfolio_snapshot_repository_prune_older_than(db_conn):
+    repo = PortfolioSnapshotRepository(db_conn)
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db_conn.execute(
+        """
+        INSERT INTO portfolio_snapshots (
+            captured_at, total_cost_basis, total_market_value,
+            total_unrealized_pnl, total_realized_pnl, total_equity, drawdown_pct, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (old_iso, '100.00', '110.00', '10.00', '0.00', '110.00', '0.0000', '{}'),
+    )
+    db_conn.execute(
+        """
+        INSERT INTO portfolio_snapshots (
+            captured_at, total_cost_basis, total_market_value,
+            total_unrealized_pnl, total_realized_pnl, total_equity, drawdown_pct, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (now_iso, '100.00', '90.00', '-10.00', '0.00', '90.00', '18.0000', '{}'),
+    )
+    db_conn.commit()
+
+    pruned = repo.prune_older_than((datetime.now(timezone.utc) - timedelta(days=30)).isoformat())
+    assert pruned == 1
+    assert repo.count() == 1
+
+
 def test_job_run_repository_records_start_finish_and_failure_message(db_conn):
     repo = JobRunRepository(db_conn)
     run_id = repo.start('demo-job')
@@ -329,3 +358,162 @@ def test_job_run_repository_start_defaults_running_status_and_zero_counts(db_con
     assert row['inserted_count'] == 0
     assert row['skipped_count'] == 0
     assert row['finished_at'] is None
+
+
+def test_leader_trade_repository_prune_keeps_rows_with_signals(db_conn):
+    trade_repo = LeaderTradeRepository(db_conn)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+
+    db_conn.execute(
+        """
+        INSERT INTO leader_trades (
+            wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+            size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ('0x1', 'old-no-signal', '0xold-nosig', 'cond-old', 'asset-old', 'BUY', 1.0, 0.5, old_iso, 'Old', 'old', '{}', old_iso),
+    )
+    db_conn.execute(
+        """
+        INSERT INTO leader_trades (
+            wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+            size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ('0x2', 'old-with-signal', '0xold-sig', 'cond-old2', 'asset-old2', 'BUY', 1.0, 0.5, old_iso, 'Old 2', 'old-2', '{}', old_iso),
+    )
+    trade_id_with_signal = db_conn.execute(
+        "SELECT id FROM leader_trades WHERE transaction_hash = ?",
+        ('0xold-sig',),
+    ).fetchone()[0]
+    db_conn.execute(
+        """
+        INSERT INTO signals (
+            leader_trade_id, wallet, leader_name, condition_id, asset_id, market_slug, side,
+            leader_price, decision, reason, detected_at, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (trade_id_with_signal, '0x2', 'old-with-signal', 'cond-old2', 'asset-old2', 'old-2', 'BUY', 0.5, 'accepted', 'accepted', now_iso, '{}'),
+    )
+    db_conn.commit()
+
+    pruned = trade_repo.prune_older_than((datetime.now(timezone.utc) - timedelta(days=30)).isoformat())
+    assert pruned == 1
+    remaining = db_conn.execute("SELECT transaction_hash FROM leader_trades ORDER BY id ASC").fetchall()
+    assert [row['transaction_hash'] for row in remaining] == ['0xold-sig']
+
+
+def test_signal_repository_prune_keeps_rows_with_sim_orders(db_conn):
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    db_conn.execute(
+        """
+        INSERT INTO leader_trades (
+            wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+            size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ('0x1', 'alice', '0xsig1', 'cond1', 'asset1', 'BUY', 1.0, 0.5, old_iso, 'M1', 'm1', '{}', old_iso),
+    )
+    db_conn.execute(
+        """
+        INSERT INTO leader_trades (
+            wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+            size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ('0x2', 'bob', '0xsig2', 'cond2', 'asset2', 'BUY', 1.0, 0.5, old_iso, 'M2', 'm2', '{}', old_iso),
+    )
+    t1 = db_conn.execute("SELECT id FROM leader_trades WHERE transaction_hash='0xsig1'").fetchone()[0]
+    t2 = db_conn.execute("SELECT id FROM leader_trades WHERE transaction_hash='0xsig2'").fetchone()[0]
+    db_conn.execute(
+        """
+        INSERT INTO signals (
+            leader_trade_id, wallet, leader_name, condition_id, asset_id, market_slug, side,
+            leader_price, decision, reason, detected_at, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (t1, '0x1', 'alice', 'cond1', 'asset1', 'm1', 'BUY', 0.5, 'accepted', 'accepted', old_iso, '{}'),
+    )
+    db_conn.execute(
+        """
+        INSERT INTO signals (
+            leader_trade_id, wallet, leader_name, condition_id, asset_id, market_slug, side,
+            leader_price, decision, reason, detected_at, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (t2, '0x2', 'bob', 'cond2', 'asset2', 'm2', 'BUY', 0.5, 'accepted', 'accepted', old_iso, '{}'),
+    )
+    signal_keep_id = db_conn.execute("SELECT id FROM signals WHERE wallet='0x2'").fetchone()[0]
+    db_conn.execute(
+        """
+        INSERT INTO sim_orders (
+            signal_id, condition_id, asset_id, market_slug, side,
+            requested_notional, filled_notional, filled_shares, fill_price, leader_price, slippage_pct,
+            status, reason, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (signal_keep_id, 'cond2', 'asset2', 'm2', 'BUY', '10.00', '10.00', '20.000000', '0.500000', '0.500000', '0.0000', 'filled', 'filled', now_iso),
+    )
+    db_conn.commit()
+
+    signal_repo = SignalRepository(db_conn)
+    pruned = signal_repo.prune_older_than((datetime.now(timezone.utc) - timedelta(days=30)).isoformat())
+    assert pruned == 1
+    remaining = db_conn.execute("SELECT wallet FROM signals ORDER BY id ASC").fetchall()
+    assert [row['wallet'] for row in remaining] == ['0x2']
+
+
+def test_signal_repository_prune_keeps_rows_linked_to_open_positions(db_conn):
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=120)).isoformat()
+    db_conn.execute(
+        """
+        INSERT INTO leader_trades (
+            wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+            size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ('0x3', 'carol', '0xsig-pos', 'cond-pos', 'asset-pos', 'BUY', 1.0, 0.5, old_iso, 'MP', 'mp', '{}', old_iso),
+    )
+    trade_id = db_conn.execute("SELECT id FROM leader_trades WHERE transaction_hash='0xsig-pos'").fetchone()[0]
+    db_conn.execute(
+        """
+        INSERT INTO signals (
+            leader_trade_id, wallet, leader_name, condition_id, asset_id, market_slug, side,
+            leader_price, decision, reason, detected_at, raw_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (trade_id, '0x3', 'carol', 'cond-pos', 'asset-pos', 'mp', 'BUY', 0.5, 'accepted', 'accepted', old_iso, '{}'),
+    )
+    db_conn.execute(
+        """
+        INSERT INTO positions (
+            condition_id, asset_id, market_slug, side, shares, avg_cost, cost_basis, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ('cond-pos', 'asset-pos', 'mp', 'BUY', '10.000000', '0.500000', '5.00', datetime.now(timezone.utc).isoformat()),
+    )
+    db_conn.commit()
+
+    signal_repo = SignalRepository(db_conn)
+    pruned = signal_repo.prune_older_than((datetime.now(timezone.utc) - timedelta(days=30)).isoformat())
+    assert pruned == 0
+    remaining = db_conn.execute("SELECT wallet FROM signals ORDER BY id ASC").fetchall()
+    assert [row['wallet'] for row in remaining] == ['0x3']
+
+
+def test_job_run_repository_prune_older_than(db_conn):
+    repo = JobRunRepository(db_conn)
+    old_id = repo.start('old-job')
+    new_id = repo.start('new-job')
+    repo.finish(old_id, status='completed')
+    repo.finish(new_id, status='completed')
+    old_iso = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+    db_conn.execute("UPDATE job_runs SET started_at = ? WHERE id = ?", (old_iso, old_id))
+    db_conn.commit()
+
+    pruned = repo.prune_older_than((datetime.now(timezone.utc) - timedelta(days=30)).isoformat())
+    assert pruned == 1
+    rows = db_conn.execute("SELECT id FROM job_runs ORDER BY id ASC").fetchall()
+    assert [row['id'] for row in rows] == [new_id]

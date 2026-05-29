@@ -3,6 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
+from app.clients.base_client import PolymarketUpstreamError
 from app.jobs import (
     run_daily_report,
     run_final_report,
@@ -95,7 +98,7 @@ def test_run_poll_trades_continues_when_one_leader_fetch_fails(tmp_path: Path, s
             wallet = kwargs['wallet']
             self.wallets_seen.append(wallet)
             if wallet == '0x1':
-                raise RuntimeError('leader fetch failed')
+                raise PolymarketUpstreamError('leader fetch failed')
             return [
                 LeaderTrade(
                     wallet=wallet,
@@ -141,6 +144,25 @@ def test_run_poll_trades_continues_when_one_leader_fetch_fails(tmp_path: Path, s
 
     assert dict(row) == {'wallet': '0x2', 'leader_name': 'bob', 'transaction_hash': '0xtx-2'}
     assert dict(job_row) == {'status': 'completed', 'error_message': None}
+
+
+def test_run_poll_trades_does_not_swallow_programming_errors(tmp_path: Path, settings_factory):
+    db_path = tmp_path / 'poll-programming-error.db'
+    init_db(str(db_path))
+    settings = settings_factory(str(db_path))
+    with get_connection(str(db_path)) as conn:
+        conn.execute(
+            "INSERT INTO leaders (rank, wallet, name, pseudonym, pnl_snapshot, volume_snapshot, selection_run_id, selected_at, raw_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, '0x1', 'alice', 'alice', None, None, 'run-1', datetime.now(timezone.utc).isoformat(), '{}'),
+        )
+        conn.commit()
+
+    class BuggyTradesClient:
+        def fetch_recent_trades(self, **kwargs):
+            raise TypeError('client integration bug')
+
+    with pytest.raises(TypeError, match='client integration bug'):
+        run_poll_trades.run(settings, trades_client=BuggyTradesClient())
 
 
 def test_run_generate_signals_accepts_injected_services(tmp_path: Path, settings_factory):

@@ -37,6 +37,13 @@ _WARNED_DB_PATHS: set[str] = set()
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
+    if db_path == ":memory:":
+        conn = sqlite3.connect(":memory:", timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")
+        conn.execute("PRAGMA busy_timeout = 30000")
+        return conn
+
     path = Path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
 

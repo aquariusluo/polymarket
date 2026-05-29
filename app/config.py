@@ -19,6 +19,8 @@ def _project_root(project_root: str | Path | None = None) -> Path:
 
 def _validated_db_path(raw_path: str, project_root: str | Path | None = None) -> str:
     if raw_path == ':memory:':
+        if _env('APP_ENV', 'dev') != 'test':
+            raise ValueError("DB_PATH=':memory:' is only supported when APP_ENV=test")
         return raw_path
     root = _project_root(project_root).resolve()
     path = Path(raw_path)
@@ -66,6 +68,10 @@ class Settings:
     market_cache_ttl_seconds: int = 300
     run_loop_max_iterations: int = 1
     run_loop_sleep_seconds: int = 0
+    retention_days_leader_trades: int = 30
+    retention_days_signals: int = 30
+    retention_days_job_runs: int = 30
+    retention_days_portfolio_snapshots: int = 60
     scarf_execution_mode: str = 'manual_confirm'
     scarf_bankroll_usd: float = 0.0
     max_daily_orders: int = 10
@@ -139,6 +145,10 @@ def get_settings(project_root=None) -> Settings:
         market_cache_ttl_seconds=int(_env('MARKET_CACHE_TTL_SECONDS', '300')),
         run_loop_max_iterations=int(_env('RUN_LOOP_MAX_ITERATIONS', '1')),
         run_loop_sleep_seconds=int(_env('RUN_LOOP_SLEEP_SECONDS', '0')),
+        retention_days_leader_trades=int(_env('RETENTION_DAYS_LEADER_TRADES', '30')),
+        retention_days_signals=int(_env('RETENTION_DAYS_SIGNALS', '30')),
+        retention_days_job_runs=int(_env('RETENTION_DAYS_JOB_RUNS', '30')),
+        retention_days_portfolio_snapshots=int(_env('RETENTION_DAYS_PORTFOLIO_SNAPSHOTS', '60')),
         scarf_execution_mode=scarf.execution_mode,
         scarf_bankroll_usd=scarf.bankroll_usd,
         max_daily_orders=scarf.max_daily_orders,

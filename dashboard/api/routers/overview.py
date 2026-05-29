@@ -37,7 +37,12 @@ def get_overview(conn: sqlite3.Connection = Depends(get_db)):
 
     try:
         rows = conn.execute(
-            'SELECT * FROM job_runs ORDER BY id DESC LIMIT 10'
+            """
+            SELECT job_name, finished_at, status
+            FROM job_runs
+            ORDER BY id DESC
+            LIMIT 10
+            """
         ).fetchall()
     except sqlite3.OperationalError:
         rows = []

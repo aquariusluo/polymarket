@@ -54,3 +54,26 @@ def test_execute_job_records_failed_job_run_and_reraises(tmp_path: Path):
     assert row["skipped_count"] == 0
     assert "boom" in row["error_message"]
     assert row["finished_at"] is not None
+
+
+def test_execute_job_atomic_failure_does_not_leave_running_row(tmp_path: Path):
+    db_path = tmp_path / "job-run-atomic-failed.db"
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        with pytest.raises(RuntimeError, match="atomic-boom"):
+            execute_job(
+                conn,
+                job_name="atomic-broken-job",
+                atomic=True,
+                runner=lambda: (_ for _ in ()).throw(RuntimeError("atomic-boom")),
+            )
+
+        rows = conn.execute(
+            "SELECT status, error_message FROM job_runs WHERE job_name = ? ORDER BY id ASC",
+            ("atomic-broken-job",),
+        ).fetchall()
+
+    assert len(rows) == 1
+    assert rows[0]["status"] == "failed"
+    assert "atomic-boom" in (rows[0]["error_message"] or "")

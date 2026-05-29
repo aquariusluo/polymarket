@@ -21,6 +21,8 @@ class Side(str, Enum):
 def normalize_side(value: Any) -> Side | None:
     if value in (None, ''):
         return None
+    if isinstance(value, Side):
+        return value
     text = str(value).upper()
     try:
         return Side(text)

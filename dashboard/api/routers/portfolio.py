@@ -10,7 +10,10 @@ router = APIRouter(prefix='/api')
 
 @router.get('/portfolio')
 def get_portfolio(conn: sqlite3.Connection = Depends(get_db)):
-    rows = conn.execute('SELECT * FROM positions ORDER BY updated_at DESC').fetchall()
+    rows = conn.execute(
+        'SELECT condition_id, asset_id, market_slug, side, shares, avg_cost, cost_basis, updated_at '
+        'FROM positions ORDER BY updated_at DESC LIMIT 100',
+    ).fetchall()
     positions = []
     for r in rows:
         d = dict(r)

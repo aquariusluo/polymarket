@@ -1,1 +1,1 @@
-from . import run_daily_report, run_final_report, run_gate_report, run_generate_signals, run_mark_to_market, run_pipeline, run_poll_trades, run_select_leaders, run_shadow, run_simulate
+from . import run_daily_report, run_final_report, run_gate_report, run_generate_signals, run_mark_to_market, run_pipeline, run_poll_trades, run_prune_data, run_select_leaders, run_shadow, run_simulate

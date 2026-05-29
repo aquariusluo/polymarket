@@ -10,6 +10,7 @@ from app.jobs import (
     run_mark_to_market,
     run_pipeline,
     run_poll_trades,
+    run_prune_data,
     run_select_leaders,
     run_shadow,
     run_simulate,
@@ -97,6 +98,10 @@ def cmd_gate_report() -> None:
     _print_mapping(run_gate_report.run())
 
 
+def cmd_prune_data() -> None:
+    _print_mapping(run_prune_data.run())
+
+
 def main() -> None:
     if len(sys.argv) < 2:
         print("Usage:")
@@ -112,6 +117,7 @@ def main() -> None:
         print("  python -m app.main run-loop")
         print("  python -m app.main shadow-run")
         print("  python -m app.main gate-report")
+        print("  python -m app.main prune-data")
         raise SystemExit(1)
 
     cmd = sys.argv[1]
@@ -140,6 +146,8 @@ def main() -> None:
         cmd_shadow_run()
     elif cmd == "gate-report":
         cmd_gate_report()
+    elif cmd == "prune-data":
+        cmd_prune_data()
     else:
         raise SystemExit(f"Unknown command: {cmd}")
 

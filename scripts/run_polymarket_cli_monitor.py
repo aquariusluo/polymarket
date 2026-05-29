@@ -1,4 +1,4 @@
-#!/Users/aquariusluo/projects/polymarket/.venv/bin/python
+#!/usr/bin/env python3
 from __future__ import annotations
 
 import json
@@ -11,12 +11,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-PROJECT_DIR = Path('/Users/aquariusluo/projects/polymarket')
+PROJECT_DIR = Path(__file__).resolve().parents[1]
 LOCK_DIR = PROJECT_DIR / 'tmp' / 'polymarket-cli-monitor.lock'
 PID_FILE = LOCK_DIR / 'pid'
 LOG_PATH = PROJECT_DIR / 'tmp' / 'polymarket-cli-monitor.jsonl'
 PYTHON = PROJECT_DIR / '.venv' / 'bin' / 'python'
-STEPS = ['select-leaders', 'poll-trades', 'generate-signals', 'simulate', 'daily-report', 'gate-report']
+STEPS = ['select-leaders', 'poll-trades', 'generate-signals', 'simulate', 'mark-to-market', 'daily-report', 'gate-report']
+PRUNE_STEP = 'prune-data'
+PRUNE_MARKER = PROJECT_DIR / 'tmp' / 'last-prune-date.txt'
 
 
 def _utc_now() -> str:
@@ -113,6 +115,48 @@ def run_step(step: str, env: dict[str, str]) -> dict:
     return result
 
 
+def _today_utc_date() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def should_run_prune() -> bool:
+    if os.environ.get('MONITOR_ENABLE_DAILY_PRUNE', '1').strip().lower() in {'0', 'false', 'no', 'off'}:
+        return False
+    try:
+        last = PRUNE_MARKER.read_text(encoding='utf-8').strip()
+    except OSError:
+        last = ''
+    return last != _today_utc_date()
+
+
+def mark_prune_ran_today() -> None:
+    PRUNE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    PRUNE_MARKER.write_text(_today_utc_date(), encoding='utf-8')
+
+
+def run_daily_prune(env: dict[str, str]) -> int:
+    if not should_run_prune():
+        log_event({'event': 'daily_prune_skipped_already_ran'})
+        return 0
+    try:
+        prune_result = run_step(PRUNE_STEP, env)
+    except subprocess.TimeoutExpired as exc:
+        log_event({
+            'event': 'step_timeout',
+            'step': PRUNE_STEP,
+            'timeout_seconds': step_timeout_seconds(),
+            'stdout': (exc.stdout or '')[-4000:] if isinstance(exc.stdout, str) else '',
+            'stderr': (exc.stderr or '')[-4000:] if isinstance(exc.stderr, str) else '',
+        })
+        return 124
+    if prune_result['returncode'] == 0:
+        mark_prune_ran_today()
+        log_event({'event': 'daily_prune_completed'})
+        return 0
+    log_event({'event': 'daily_prune_failed', 'returncode': prune_result['returncode']})
+    return prune_result['returncode'] or 1
+
+
 def main() -> int:
     if not acquire_lock():
         return 0
@@ -133,6 +177,7 @@ def main() -> int:
         'signal_batch_limit': env['SIGNAL_BATCH_LIMIT'],
     })
 
+    exit_code = 0
     try:
         for step in STEPS:
             try:
@@ -145,10 +190,20 @@ def main() -> int:
                     'stdout': (exc.stdout or '')[-4000:] if isinstance(exc.stdout, str) else '',
                     'stderr': (exc.stderr or '')[-4000:] if isinstance(exc.stderr, str) else '',
                 })
-                return 124
+                exit_code = 124
+                break
             if result['returncode'] != 0:
                 log_event({'event': 'monitor_failed', 'failed_step': step})
-                return result['returncode'] or 1
+                exit_code = result['returncode'] or 1
+                break
+        if exit_code == 0:
+            prune_code = run_daily_prune(env)
+            if prune_code != 0:
+                log_event({'event': 'daily_prune_non_blocking_failure', 'returncode': prune_code})
+        else:
+            log_event({'event': 'daily_prune_skipped_pipeline_failed'})
+        if exit_code != 0:
+            return exit_code
         log_event({'event': 'monitor_completed'})
         return 0
     finally:

@@ -137,6 +137,19 @@ class LeaderTradeRepository:
         row = self.conn.execute("SELECT COUNT(*) AS c FROM leader_trades").fetchone()
         return int(row["c"])
 
+    def prune_older_than(self, cutoff_iso: str, *, commit: bool = True) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM leader_trades
+            WHERE ingested_at < ?
+              AND id NOT IN (SELECT leader_trade_id FROM signals)
+            """,
+            (cutoff_iso,),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount)
+
     def list_without_signal(self, limit: int = 500) -> list[sqlite3.Row]:
         return list(
             self.conn.execute(
@@ -284,6 +297,25 @@ class SignalRepository:
             "SELECT decision, COUNT(*) AS c FROM signals GROUP BY decision"
         ).fetchall()
         return {str(r['decision']): int(r['c']) for r in rows}
+
+    def prune_older_than(self, cutoff_iso: str, *, commit: bool = True) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM signals
+            WHERE detected_at < ?
+              AND id NOT IN (SELECT signal_id FROM sim_orders)
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM positions p
+                  WHERE p.condition_id = signals.condition_id
+                    AND p.asset_id = signals.asset_id
+              )
+            """,
+            (cutoff_iso,),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount)
 
     def list_pending_accepted(self, limit: int = 500) -> list[sqlite3.Row]:
         return list(
@@ -457,7 +489,7 @@ class JobRunRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
 
-    def start(self, job_name: str) -> int:
+    def start(self, job_name: str, *, commit: bool = True) -> int:
         cursor = self.conn.execute(
             """
             INSERT INTO job_runs (job_name, started_at, status, inserted_count, skipped_count)
@@ -465,7 +497,8 @@ class JobRunRepository:
             """,
             (job_name, utc_now_iso()),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
         return int(cursor.lastrowid)
 
     def finish(
@@ -476,6 +509,7 @@ class JobRunRepository:
         inserted_count: int = 0,
         skipped_count: int = 0,
         error_message: str | None = None,
+        commit: bool = True,
     ) -> None:
         self.conn.execute(
             """
@@ -485,12 +519,58 @@ class JobRunRepository:
             """,
             (utc_now_iso(), status, inserted_count, skipped_count, error_message, job_run_id),
         )
-        self.conn.commit()
+        if commit:
+            self.conn.commit()
+
+    def prune_older_than(self, cutoff_iso: str, *, commit: bool = True) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM job_runs
+            WHERE started_at < ?
+            """,
+            (cutoff_iso,),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount)
 
 
 class PositionRepository:
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
+
+    def _decimal_position_row(self, condition_id: str, asset_id: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            """
+            SELECT condition_id, asset_id, market_slug, side, shares, avg_cost, cost_basis
+            FROM positions
+            WHERE condition_id = ? AND asset_id = ?
+            """,
+            (condition_id, asset_id),
+        ).fetchone()
+
+    def current_cost_basis_decimal(self, condition_id: str, asset_id: str) -> Decimal:
+        row = self._decimal_position_row(condition_id, asset_id)
+        if row is None:
+            return money(0)
+        return money(row['cost_basis'])
+
+    def current_market_cost_basis_decimal(self, condition_id: str) -> Decimal:
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(cost_basis), '0.00') AS total FROM positions WHERE condition_id = ?",
+            (condition_id,),
+        ).fetchone()
+        if row is None:
+            return money(0)
+        return money(row['total'])
+
+    def total_cost_basis_decimal(self) -> Decimal:
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(cost_basis), '0.00') AS total FROM positions"
+        ).fetchone()
+        if row is None:
+            return money(0)
+        return money(row['total'])
 
     def get(self, condition_id: str, asset_id: str) -> Position | None:
         row = self.conn.execute(
@@ -510,23 +590,13 @@ class PositionRepository:
         )
 
     def current_cost_basis(self, condition_id: str, asset_id: str) -> float:
-        pos = self.get(condition_id, asset_id)
-        return pos.cost_basis if pos is not None else 0.0
+        return to_float(self.current_cost_basis_decimal(condition_id, asset_id))
 
     def current_market_cost_basis(self, condition_id: str) -> float:
-        row = self.conn.execute(
-            "SELECT COALESCE(SUM(cost_basis), '0.00') AS total FROM positions WHERE condition_id = ?",
-            (condition_id,),
-        ).fetchone()
-        if row is None:
-            return 0.0
-        return to_float(money(row['total']))
+        return to_float(self.current_market_cost_basis_decimal(condition_id))
 
     def total_cost_basis(self) -> float:
-        row = self.conn.execute(
-            "SELECT COALESCE(SUM(cost_basis), '0.00') AS total FROM positions"
-        ).fetchone()
-        return to_float(money(row['total'])) if row is not None else 0.0
+        return to_float(self.total_cost_basis_decimal())
 
     def list_all(self) -> list[Position]:
         return [
@@ -543,11 +613,11 @@ class PositionRepository:
         ]
 
     def upsert_buy(self, condition_id: str, asset_id: str, market_slug: str | None, side: str | None, shares: float, fill_price: float, *, commit: bool = True) -> None:
-        existing = self.get(condition_id, asset_id)
+        existing_row = self._decimal_position_row(condition_id, asset_id)
         share_qty = shares if isinstance(shares, Decimal) else quantize_shares(shares)
         fill_price_dec = price(fill_price)
         add_cost = money(share_qty * fill_price_dec)
-        if existing is None:
+        if existing_row is None:
             self.conn.execute(
                 """
                 INSERT INTO positions (
@@ -557,8 +627,10 @@ class PositionRepository:
                 (condition_id, asset_id, market_slug, side, _shares_text(share_qty), _price_text(fill_price_dec), _money_text(add_cost), utc_now_iso()),
             )
         else:
-            new_shares = quantize_shares(existing.shares) + share_qty
-            new_cost = money(Decimal(str(existing.cost_basis)) + add_cost)
+            existing_shares = quantize_shares(existing_row['shares'])
+            existing_cost = money(existing_row['cost_basis'])
+            new_shares = existing_shares + share_qty
+            new_cost = money(existing_cost + add_cost)
             new_avg = price(new_cost / new_shares) if new_shares else price(0)
             self.conn.execute(
                 """
@@ -650,3 +722,15 @@ class PortfolioSnapshotRepository:
         if commit:
             self.conn.commit()
         return int(cursor.lastrowid)
+
+    def prune_older_than(self, cutoff_iso: str, *, commit: bool = True) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM portfolio_snapshots
+            WHERE captured_at < ?
+            """,
+            (cutoff_iso,),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount)

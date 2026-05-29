@@ -5,6 +5,10 @@ from typing import Any
 import httpx
 
 
+class PolymarketUpstreamError(RuntimeError):
+    """Raised when upstream data is missing or malformed."""
+
+
 class BasePolymarketClient:
     def __init__(
         self,

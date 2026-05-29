@@ -120,3 +120,12 @@ CREATE TABLE IF NOT EXISTS job_runs (
     skipped_count INTEGER DEFAULT 0,
     error_message TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_signals_decision ON signals(decision);
+CREATE INDEX IF NOT EXISTS idx_signals_detected_at ON signals(detected_at);
+CREATE INDEX IF NOT EXISTS idx_sim_orders_status ON sim_orders(status);
+CREATE INDEX IF NOT EXISTS idx_sim_orders_signal_id ON sim_orders(signal_id);
+CREATE INDEX IF NOT EXISTS idx_leader_trades_wallet ON leader_trades(wallet);
+CREATE INDEX IF NOT EXISTS idx_leader_trades_ingested_at ON leader_trades(ingested_at);
+CREATE INDEX IF NOT EXISTS idx_positions_condition_id ON positions(condition_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_snapshots_captured_at ON portfolio_snapshots(captured_at);

@@ -1,18 +1,22 @@
 #!/usr/bin/env zsh
 set -euo pipefail
 
-PROJECT_DIR="/Users/aquariusluo/projects/polymarket"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_DIR="$PROJECT_DIR/tmp/polymarket-cli-shadow.lock"
 PID_FILE="$LOCK_DIR/pid"
 
 mkdir -p "$PROJECT_DIR/tmp"
 
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  if [[ -f "$PID_FILE" ]] \
-    && kill -0 "$(cat "$PID_FILE")" 2>/dev/null \
-    && ps -p "$(cat "$PID_FILE")" -o command= | grep -Fq "run_polymarket_cli_shadow.sh"; then
-    echo "shadow-run already active; skipping $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    exit 0
+  if [[ -f "$PID_FILE" ]]; then
+    PID="$(cat "$PID_FILE" 2>/dev/null || true)"
+    if [[ "$PID" =~ ^[0-9]+$ ]] && kill -0 "$PID" 2>/dev/null; then
+      CMD="$(ps -p "$PID" -o command= 2>/dev/null || true)"
+      if echo "$CMD" | grep -Eq "run_polymarket_cli_shadow\\.sh|app\\.main shadow-run"; then
+        echo "shadow-run already active; skipping $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        exit 0
+      fi
+    fi
   fi
   echo "removing stale shadow-run lock $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   rm -rf "$LOCK_DIR"

@@ -26,7 +26,6 @@ export function useRefresh(fetchFn: () => Promise<void>, intervalMs = 30_000) {
       await fetchFn()
       lastRefreshed.value = new Date()
     } catch (e) {
-      console.error('Refresh failed:', e)
       error.value = e instanceof Error ? e : new Error(String(e))
     } finally {
       isFetching.value = false

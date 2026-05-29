@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 set -euo pipefail
 
-PROJECT_DIR="/Users/aquariusluo/projects/polymarket"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 LABEL="com.aquariusluo.polymarket.cli-shadow"
 SOURCE_PLIST="$PROJECT_DIR/launchd/$LABEL.plist"
 TARGET_DIR="$HOME/Library/LaunchAgents"
@@ -10,7 +10,8 @@ TARGET_PLIST="$TARGET_DIR/$LABEL.plist"
 mkdir -p "$TARGET_DIR" "$PROJECT_DIR/tmp"
 chmod +x "$PROJECT_DIR/scripts/run_polymarket_cli_shadow.sh"
 chmod +x "$PROJECT_DIR/scripts/run_polymarket_cli_monitor.py"
-cp "$SOURCE_PLIST" "$TARGET_PLIST"
+chmod +x "$PROJECT_DIR/scripts/install_polymarket_cli_logrotate_macos.sh"
+sed "s|{{PROJECT_DIR}}|$PROJECT_DIR|g" "$SOURCE_PLIST" > "$TARGET_PLIST"
 
 launchctl bootout "gui/$(id -u)" "$TARGET_PLIST" 2>/dev/null || true
 launchctl bootstrap "gui/$(id -u)" "$TARGET_PLIST"
@@ -20,3 +21,5 @@ echo "installed $LABEL"
 echo "plist=$TARGET_PLIST"
 echo "stdout=$PROJECT_DIR/tmp/polymarket-cli-shadow.out.log"
 echo "stderr=$PROJECT_DIR/tmp/polymarket-cli-shadow.err.log"
+echo "optional log rotation install:"
+echo "  $PROJECT_DIR/scripts/install_polymarket_cli_logrotate_macos.sh"

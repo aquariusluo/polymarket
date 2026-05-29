@@ -1,0 +1,162 @@
+{
+  "config" : {
+    "modelRecommendation" : {
+      "preferred" : "claude-sonnet-4-6",
+      "rationale" : "This workflow mixes web inspection, report updates, and judgment-heavy trade summaries, so a stronger model is preferable to a cheap one."
+    },
+    "schema" : [
+      {
+        "default" : "Polymarket profit leaderboard",
+        "description" : "Human-readable source description for where the agent should find the current top profitable accounts on [Polymarket](https:\/\/polymarket.com\/).",
+        "key" : "leaderboard_source",
+        "label" : "Leaderboard source",
+        "required" : true,
+        "type" : "string"
+      },
+      {
+        "default" : "live_top5",
+        "description" : "Choose whether to keep following a fixed override list or refresh the top 5 dynamically from the leaderboard.",
+        "key" : "leader_selection_mode",
+        "label" : "Leader selection mode",
+        "options" : [
+          {
+            "label" : "Refresh live top 5",
+            "value" : "live_top5"
+          },
+          {
+            "label" : "Use fixed override list",
+            "value" : "fixed_override"
+          }
+        ],
+        "required" : true,
+        "type" : "enum"
+      },
+      {
+        "default" : [
+
+        ],
+        "description" : "Optional wallet addresses or aliases to follow instead of the live leaderboard when the selection mode is `fixed_override`.",
+        "itemType" : "string",
+        "key" : "top_accounts_override",
+        "label" : "Top account overrides",
+        "maxItems" : 5,
+        "minItems" : 0,
+        "required" : false,
+        "type" : "list"
+      },
+      {
+        "default" : "manual_confirm",
+        "description" : "Controls whether the agent only watches, prepares an order ticket for review, or follows automatically after you add an audited execution workflow.",
+        "key" : "execution_mode",
+        "label" : "Execution mode",
+        "options" : [
+          {
+            "label" : "Alert only",
+            "value" : "alert_only"
+          },
+          {
+            "label" : "Manual confirm",
+            "value" : "manual_confirm"
+          },
+          {
+            "label" : "Auto follow",
+            "value" : "auto_follow"
+          }
+        ],
+        "required" : true,
+        "type" : "enum"
+      },
+      {
+        "default" : 1000,
+        "description" : "Total capital you are willing to reserve for this strategy.",
+        "key" : "bankroll_usd",
+        "label" : "Copy bankroll (USD)",
+        "max" : 1000000,
+        "min" : 0,
+        "required" : true,
+        "type" : "number"
+      },
+      {
+        "default" : 100,
+        "description" : "Absolute cap for any single copied trade.",
+        "key" : "max_copy_usd_per_order",
+        "label" : "Max copy size per order (USD)",
+        "max" : 100000,
+        "min" : 1,
+        "required" : true,
+        "type" : "number"
+      },
+      {
+        "default" : 12,
+        "description" : "Hard stop to prevent runaway activity on unusually busy days.",
+        "key" : "max_daily_orders",
+        "label" : "Max copied orders per day",
+        "max" : 500,
+        "min" : 1,
+        "required" : true,
+        "type" : "number"
+      },
+      {
+        "default" : 50,
+        "description" : "Reject or flag any proposed copy trade if the market moved beyond this slippage allowance.",
+        "key" : "slippage_bps",
+        "label" : "Max slippage (bps)",
+        "max" : 10000,
+        "min" : 0,
+        "required" : true,
+        "type" : "number"
+      },
+      {
+        "default" : "2026-05-24",
+        "description" : "Start date for the two-month review window in `YYYY-MM-DD` format.",
+        "key" : "evaluation_start_date",
+        "label" : "Evaluation start date",
+        "pattern" : "^\\d{4}-\\d{2}-\\d{2}$",
+        "required" : true,
+        "type" : "string"
+      },
+      {
+        "default" : 60,
+        "description" : "How long the strategy should run before the agent writes the formal review section.",
+        "key" : "evaluation_days",
+        "label" : "Evaluation window (days)",
+        "max" : 365,
+        "min" : 7,
+        "required" : true,
+        "type" : "number"
+      },
+      {
+        "default" : [
+
+        ],
+        "description" : "Wallets to ignore even if they appear in the live leaderboard.",
+        "itemType" : "string",
+        "key" : "excluded_wallets",
+        "label" : "Excluded wallets",
+        "maxItems" : 25,
+        "minItems" : 0,
+        "required" : false,
+        "type" : "list"
+      },
+      {
+        "default" : "",
+        "description" : "Free-form notes about sizing, special exclusions, or anything the monitor should keep in mind.",
+        "key" : "operator_notes",
+        "label" : "Operator notes",
+        "required" : false,
+        "type" : "text"
+      }
+    ]
+  },
+  "contents" : {
+    "agentsMd" : true,
+    "config" : 12,
+    "dashboard" : true
+  },
+  "description" : "Monitor the current top 5 profitable Polymarket accounts, surface fresh order activity, and measure copy-trading performance over a 60-day window.",
+  "id" : "aquariusluo\/polymarket-leader-follower",
+  "kanbanTenant" : "scarf:polymarket",
+  "name" : "Polymarket Leader Follower",
+  "schemaVersion" : 2,
+  "version" : "1.0.0"
+}

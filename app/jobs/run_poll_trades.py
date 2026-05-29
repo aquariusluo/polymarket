@@ -3,7 +3,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.clients.polymarket_cli_client import PolymarketCliTradesClient
+import httpx
+
+from app.clients.base_client import PolymarketUpstreamError
+from app.clients.polymarket_cli_client import PolymarketCliError, PolymarketCliTradesClient
 from app.clients.trades_client import TradesClient
 from app.config import Settings, get_settings
 from app.services.job_run_service import execute_job
@@ -11,6 +14,12 @@ from app.storage.db import get_connection, init_db
 from app.storage.repositories import LeaderRepository, LeaderTradeRepository
 
 logger = logging.getLogger(__name__)
+
+RECOVERABLE_LEADER_POLL_ERRORS = (
+    httpx.HTTPError,
+    PolymarketUpstreamError,
+    PolymarketCliError,
+)
 
 
 def run(settings: Settings | None = None, *, project_root=None, trades_client: Any | None = None, trades_client_cls: type | None = None, conn=None) -> dict:
@@ -38,7 +47,7 @@ def run(settings: Settings | None = None, *, project_root=None, trades_client: A
                     limit=settings.trade_fetch_limit,
                     leader_name=leader_name,
                 )
-            except Exception as exc:
+            except RECOVERABLE_LEADER_POLL_ERRORS as exc:
                 logger.warning("failed to poll leader wallet=%s leader_name=%s", wallet, leader_name, exc_info=True)
                 leader_errors.append({
                     'wallet': str(wallet),

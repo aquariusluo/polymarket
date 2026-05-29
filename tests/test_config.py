@@ -57,6 +57,16 @@ def test_get_settings_rejects_db_path_outside_project_root(tmp_path: Path, monke
         get_settings(project_root)
 
 
+def test_get_settings_rejects_memory_db_outside_test_app_env(tmp_path: Path, monkeypatch):
+    project_root = tmp_path / 'project'
+    project_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv('APP_ENV', 'dev')
+    monkeypatch.setenv('DB_PATH', ':memory:')
+
+    with pytest.raises(ValueError, match="DB_PATH=':memory:' is only supported when APP_ENV=test"):
+        get_settings(project_root)
+
+
 
 def test_get_settings_exposes_structured_scarf_config(tmp_path: Path, monkeypatch):
     project_root = tmp_path / 'project'

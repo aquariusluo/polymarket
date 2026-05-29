@@ -104,8 +104,9 @@ class ValuationService:
                 )
                 continue
             market_value = money(shares(position.shares) * mark_price)
-            unrealized = money(market_value - money(position.cost_basis))
-            total_cost_basis = money(total_cost_basis + money(position.cost_basis))
+            position_cost_basis = money(position.cost_basis)
+            unrealized = money(market_value - position_cost_basis)
+            total_cost_basis = money(total_cost_basis + position_cost_basis)
             total_market_value = money(total_market_value + market_value)
             positions_marked += 1
             raw_positions.append(

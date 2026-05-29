@@ -52,3 +52,15 @@ def test_runtime_connections_enable_wal_and_busy_timeout(tmp_path: Path):
 
     assert journal_mode == "wal"
     assert busy_timeout == 30000
+
+
+def test_memory_connection_does_not_create_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(tmp_path)
+
+    with get_connection(":memory:") as conn:
+        database_path = conn.execute("PRAGMA database_list").fetchone()["file"]
+        busy_timeout = conn.execute("PRAGMA busy_timeout").fetchone()[0]
+
+    assert database_path == ""
+    assert busy_timeout == 30000
+    assert not (tmp_path / ":memory:").exists()

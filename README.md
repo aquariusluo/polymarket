@@ -131,6 +131,24 @@ Install the macOS LaunchAgent to run the 5-minute monitor automatically:
 scripts/install_polymarket_cli_shadow_launchd.sh
 ```
 
+Install optional macOS log rotation (newsyslog) to cap monitor logs:
+
+```bash
+scripts/install_polymarket_cli_logrotate_macos.sh
+```
+
+Run one-shot healthcheck (exit code: `0=PASS`, `1=PASS with warnings`, `2=FAIL`):
+
+```bash
+scripts/healthcheck_polymarket_shadow.sh
+```
+
+Machine-readable JSON output:
+
+```bash
+scripts/healthcheck_polymarket_shadow.sh --json
+```
+
 Stop and remove it:
 
 ```bash

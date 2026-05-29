@@ -59,7 +59,7 @@ class DummyMarketService:
         )
 
 
-def _insert_signal(conn, *, price=0.57, wallet='0x1', tx_hash='0xtx'):
+def _insert_signal(conn, *, price=0.57, wallet='0x1', tx_hash='0xtx', side: Side = Side.BUY):
     conn.execute(
         """
         INSERT INTO leader_trades (
@@ -82,7 +82,7 @@ def _insert_signal(conn, *, price=0.57, wallet='0x1', tx_hash='0xtx'):
             asset_id='asset_yes',
             decision=Decision.ACCEPTED,
             reason='accepted',
-            side=Side.BUY,
+            side=side,
             price=price,
             market_slug='will-x-happen',
         ),
@@ -309,3 +309,18 @@ def test_simulation_service_rejects_slippage_too_high(tmp_path: Path):
         row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
         assert row['status'] == 'rejected'
         assert row['reason'] == 'slippage_too_high'
+
+
+def test_simulation_service_rejects_unsupported_side(tmp_path: Path):
+    db_path = tmp_path / 'unsupported-side.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn, side=Side.SELL)
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'rejected'
+        assert row['reason'] == 'unsupported_side'
