@@ -84,7 +84,7 @@ onUnmounted(() => {
     <aside class="sticky top-0 z-30 w-full border-b border-gray-800/90 bg-gray-900/95 backdrop-blur supports-[backdrop-filter]:bg-gray-900/80 md:static md:w-56 md:border-b-0 md:border-r md:bg-gray-900 md:backdrop-blur-none md:flex md:min-h-screen md:flex-col">
       <div class="px-4 pb-3 pt-[max(env(safe-area-inset-top),0.5rem)] md:px-5 md:py-4 md:border-b md:border-gray-800">
         <h1 class="text-base font-bold text-white tracking-tight md:text-lg">Polymarket</h1>
-        <p class="mt-0.5 text-xs text-gray-500">Copy-Trade Monitor</p>
+        <p class="mt-0.5 text-xs text-gray-400">Copy-Trade Monitor</p>
       </div>
       <nav ref="navScroller" class="overflow-x-auto px-2 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:flex-1 md:overflow-visible md:px-0">
         <div class="flex min-w-max snap-x snap-mandatory gap-1 md:block md:min-w-0">

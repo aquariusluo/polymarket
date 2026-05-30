@@ -77,14 +77,14 @@ async function showTrades(wallet: string) {
           Refresh
         </button>
       </div>
-      <p v-if="lastRefreshed" class="mt-1 text-[11px] text-gray-500">
+      <p v-if="lastRefreshed" class="mt-1 text-[11px] text-gray-400">
         Updated {{ lastRefreshed.toLocaleTimeString() }}
       </p>
       <input
         v-model="leaderQuery"
         type="text"
         placeholder="Search leader or wallet..."
-        class="mt-2 min-h-11 w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none"
+        class="mt-2 min-h-11 w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
       />
     </div>
 
@@ -98,12 +98,12 @@ async function showTrades(wallet: string) {
           v-model="leaderQuery"
           type="text"
           placeholder="Search leader or wallet..."
-          class="hidden w-64 rounded-md border border-gray-700 bg-gray-900 px-2.5 py-1.5 text-xs text-gray-200 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none sm:block"
+          class="hidden w-64 rounded-md border border-gray-700 bg-gray-900 min-h-11 px-2.5 py-1.5 text-xs text-gray-200 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none sm:block"
         />
-        <span v-if="lastRefreshed" class="text-xs text-gray-500">
+        <span v-if="lastRefreshed" class="text-xs text-gray-400">
           Updated {{ lastRefreshed.toLocaleTimeString() }}
         </span>
-        <button v-if="error" @click="refresh" class="text-xs text-red-400 underline hover:text-red-300">
+        <button v-if="error" @click="refresh" class="min-h-11 px-3 py-2 text-xs text-red-400 underline hover:text-red-300">
           Retry
         </button>
       </div>
@@ -112,7 +112,7 @@ async function showTrades(wallet: string) {
     <!-- Error Alert -->
     <div v-if="error && !leaders.length" class="mb-6 flex flex-col gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-red-400 sm:flex-row sm:items-center sm:justify-between">
       <span class="break-words">Failed to load leaders. {{ error.message }}</span>
-      <button @click="refresh" class="bg-red-800 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition">
+      <button @click="refresh" class="min-h-11 rounded bg-red-800 px-3 py-2 text-xs text-white transition hover:bg-red-700">
         Retry
       </button>
     </div>
@@ -129,20 +129,21 @@ async function showTrades(wallet: string) {
           class="w-full rounded-lg border border-gray-800 bg-gray-900/50 p-3 text-left transition-colors hover:bg-gray-800/60"
           :class="{ 'ring-1 ring-blue-500/60 bg-gray-800/60': selectedLeader === l.wallet }"
           @click="showTrades(l.wallet)"
+          :aria-expanded="selectedLeader === l.wallet"
         >
           <div class="mb-1 flex items-center justify-between">
-            <span class="text-xs text-gray-500">#{{ l.rank }}</span>
+            <span class="text-xs text-gray-400">#{{ l.rank }}</span>
             <span class="text-sm font-semibold" :class="l.pnl_snapshot >= 0 ? 'text-green-400' : 'text-red-400'">
               ${{ l.pnl_snapshot.toFixed(2) }}
             </span>
           </div>
           <div class="break-all text-sm text-gray-200">{{ displayLeaderName(l) }}</div>
-          <div class="mt-1 text-xs text-gray-500">{{ shortWallet(l.wallet) }}</div>
+          <div class="mt-1 text-xs text-gray-400">{{ shortWallet(l.wallet) }}</div>
           <div class="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-400">
             <div>Volume: <span class="text-gray-300">${{ l.volume_snapshot.toFixed(2) }}</span></div>
             <div>Trades: <span class="text-gray-300">{{ l.trade_count }}</span></div>
           </div>
-          <div class="mt-1 text-xs text-gray-500">
+          <div class="mt-1 text-xs text-gray-400">
             Last: {{ formatLocalTime(l.last_trade_at) }}
           </div>
           <div class="mt-1 text-xs text-blue-300/80">
@@ -166,7 +167,7 @@ async function showTrades(wallet: string) {
           </div>
           <div
             v-else-if="selectedLeader === l.wallet && !selectedTrades.length"
-            class="mt-3 border-t border-gray-700/70 pt-3 text-xs text-gray-500"
+            class="mt-3 border-t border-gray-700/70 pt-3 text-xs text-gray-400"
           >
             No recent trades found.
           </div>
@@ -197,7 +198,7 @@ async function showTrades(wallet: string) {
             <td class="py-2" :class="l.pnl_snapshot >= 0 ? 'text-green-400' : 'text-red-400'">${{ l.pnl_snapshot.toFixed(2) }}</td>
             <td class="py-2">${{ l.volume_snapshot.toFixed(2) }}</td>
             <td class="py-2">{{ l.trade_count }}</td>
-            <td class="py-2 text-gray-500">{{ formatLocalTime(l.last_trade_at) }}</td>
+            <td class="py-2 text-gray-400">{{ formatLocalTime(l.last_trade_at) }}</td>
           </tr>
         </tbody>
       </table>
@@ -225,16 +226,16 @@ async function showTrades(wallet: string) {
               <td class="py-2">{{ t.side }}</td>
               <td class="py-2">{{ t.size }}</td>
               <td class="py-2">{{ t.price }}</td>
-              <td class="py-2 text-gray-500">{{ formatLocalTime(t.timestamp) }}</td>
+              <td class="py-2 text-gray-400">{{ formatLocalTime(t.timestamp) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
     </template>
-    <div v-else-if="leaderQuery.trim() && !isLoading && !error" class="text-center py-12 text-gray-500">
+    <div v-else-if="leaderQuery.trim() && !isLoading && !error" class="text-center py-12 text-gray-400">
       No leaders match "{{ leaderQuery }}".
     </div>
-    <div v-else-if="!error" class="text-center py-12 text-gray-500">
+    <div v-else-if="!error" class="text-center py-12 text-gray-400">
       No leaders tracked yet.
     </div>
   </div>

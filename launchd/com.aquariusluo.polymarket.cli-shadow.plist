@@ -27,7 +27,7 @@
   <integer>30</integer>
 
   <key>ExitTimeOut</key>
-  <integer>30</integer>
+  <integer>1800</integer>
 
   <key>StandardOutPath</key>
   <string>{{PROJECT_DIR}}/tmp/polymarket-cli-shadow.out.log</string>
@@ -47,6 +47,8 @@
     <string>10</string>
     <key>MONITOR_STEP_TIMEOUT_SECONDS</key>
     <string>180</string>
+    <key>MONITOR_PRUNE_TIMEOUT_SECONDS</key>
+    <string>300</string>
     <key>RUN_LOOP_MAX_ITERATIONS</key>
     <string>1</string>
     <key>RUN_LOOP_SLEEP_SECONDS</key>

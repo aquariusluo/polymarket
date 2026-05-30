@@ -131,6 +131,9 @@ Install the macOS LaunchAgent to run the 5-minute monitor automatically:
 scripts/install_polymarket_cli_shadow_launchd.sh
 ```
 
+Note: `launchd/com.aquariusluo.polymarket.cli-shadow.plist` is a template with `{{PROJECT_DIR}}` placeholders.
+Always install via the script above, which renders absolute paths before calling `launchctl`.
+
 Install optional macOS log rotation (newsyslog) to cap monitor logs:
 
 ```bash

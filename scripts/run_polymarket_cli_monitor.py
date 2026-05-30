@@ -79,6 +79,10 @@ def step_timeout_seconds() -> int:
     return int(os.environ.get('MONITOR_STEP_TIMEOUT_SECONDS', '180'))
 
 
+def prune_timeout_seconds() -> int:
+    return int(os.environ.get('MONITOR_PRUNE_TIMEOUT_SECONDS', '300'))
+
+
 def build_env() -> dict[str, str]:
     env = os.environ.copy()
     env['PATH'] = '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
@@ -92,7 +96,8 @@ def build_env() -> dict[str, str]:
     return env
 
 
-def run_step(step: str, env: dict[str, str]) -> dict:
+def run_step(step: str, env: dict[str, str], timeout_seconds: int | None = None) -> dict:
+    timeout = step_timeout_seconds() if timeout_seconds is None else timeout_seconds
     started = _utc_now()
     completed = subprocess.run(
         [str(PYTHON), '-m', 'app.main', step],
@@ -100,7 +105,7 @@ def run_step(step: str, env: dict[str, str]) -> dict:
         env=env,
         text=True,
         capture_output=True,
-        timeout=step_timeout_seconds(),
+        timeout=timeout,
         check=False,
     )
     result = {
@@ -139,20 +144,22 @@ def run_daily_prune(env: dict[str, str]) -> int:
         log_event({'event': 'daily_prune_skipped_already_ran'})
         return 0
     try:
-        prune_result = run_step(PRUNE_STEP, env)
+        prune_result = run_step(PRUNE_STEP, env, timeout_seconds=prune_timeout_seconds())
     except subprocess.TimeoutExpired as exc:
         log_event({
             'event': 'step_timeout',
             'step': PRUNE_STEP,
-            'timeout_seconds': step_timeout_seconds(),
+            'timeout_seconds': prune_timeout_seconds(),
             'stdout': (exc.stdout or '')[-4000:] if isinstance(exc.stdout, str) else '',
             'stderr': (exc.stderr or '')[-4000:] if isinstance(exc.stderr, str) else '',
         })
+        mark_prune_ran_today()
         return 124
     if prune_result['returncode'] == 0:
         mark_prune_ran_today()
         log_event({'event': 'daily_prune_completed'})
         return 0
+    mark_prune_ran_today()
     log_event({'event': 'daily_prune_failed', 'returncode': prune_result['returncode']})
     return prune_result['returncode'] or 1
 
@@ -178,6 +185,7 @@ def main() -> int:
     })
 
     exit_code = 0
+    prune_code = 0
     try:
         for step in STEPS:
             try:
@@ -196,12 +204,13 @@ def main() -> int:
                 log_event({'event': 'monitor_failed', 'failed_step': step})
                 exit_code = result['returncode'] or 1
                 break
-        if exit_code == 0:
+        try:
             prune_code = run_daily_prune(env)
-            if prune_code != 0:
-                log_event({'event': 'daily_prune_non_blocking_failure', 'returncode': prune_code})
-        else:
-            log_event({'event': 'daily_prune_skipped_pipeline_failed'})
+        except Exception as exc:
+            log_event({'event': 'daily_prune_exception', 'error': str(exc)})
+            prune_code = 1
+        if prune_code != 0:
+            log_event({'event': 'daily_prune_non_blocking_failure', 'returncode': prune_code})
         if exit_code != 0:
             return exit_code
         log_event({'event': 'monitor_completed'})

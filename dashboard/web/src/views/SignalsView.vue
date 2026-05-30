@@ -59,14 +59,14 @@ async function fetch() {
           Refresh
         </button>
       </div>
-      <p v-if="lastRefreshed" class="mt-1 text-[11px] text-gray-500">
+      <p v-if="lastRefreshed" class="mt-1 text-[11px] text-gray-400">
         Updated {{ lastRefreshed.toLocaleTimeString() }}
       </p>
       <input
         v-model="signalQuery"
         type="text"
         placeholder="Search leader, wallet, market..."
-        class="mt-2 min-h-11 w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none"
+        class="mt-2 min-h-11 w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
       />
     </div>
 
@@ -80,12 +80,12 @@ async function fetch() {
           v-model="signalQuery"
           type="text"
           placeholder="Search leader, wallet, market..."
-          class="hidden w-72 rounded-md border border-gray-700 bg-gray-900 px-2.5 py-1.5 text-xs text-gray-200 placeholder:text-gray-500 focus:border-blue-500 focus:outline-none sm:block"
+          class="hidden w-72 rounded-md border border-gray-700 bg-gray-900 min-h-11 px-2.5 py-1.5 text-xs text-gray-200 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none sm:block"
         />
-        <span v-if="lastRefreshed" class="text-xs text-gray-500">
+        <span v-if="lastRefreshed" class="text-xs text-gray-400">
           Updated {{ lastRefreshed.toLocaleTimeString() }}
         </span>
-        <button v-if="error" @click="refresh" class="text-xs text-red-400 underline hover:text-red-300">
+        <button v-if="error" @click="refresh" class="min-h-11 px-3 py-2 text-xs text-red-400 underline hover:text-red-300">
           Retry
         </button>
       </div>
@@ -99,7 +99,7 @@ async function fetch() {
         </svg>
         <span class="break-words">Failed to load signals. {{ error.message }}</span>
       </div>
-      <button @click="refresh" class="bg-red-800 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition">
+      <button @click="refresh" class="min-h-11 rounded bg-red-800 px-3 py-2 text-xs text-white transition hover:bg-red-700">
         Retry
       </button>
     </div>
@@ -134,7 +134,7 @@ async function fetch() {
         <div class="h-5 w-10 bg-gray-700 rounded mx-auto"></div>
       </div>
     </div>
-    <div v-else-if="!error" class="bg-gray-800 rounded-lg p-8 text-center text-gray-500 mb-6">
+    <div v-else-if="!error" class="bg-gray-800 rounded-lg p-8 text-center text-gray-400 mb-6">
       No funnel data available.
     </div>
 
@@ -145,6 +145,7 @@ async function fetch() {
         class="w-full rounded-lg border border-gray-800 bg-gray-900/40 p-3 text-left text-sm transition-colors hover:bg-gray-800/60"
         :class="{ 'ring-1 ring-blue-500/60 bg-gray-800/60': expandedSignalId === s.id }"
         @click="toggleSignal(s.id)"
+        :aria-expanded="expandedSignalId === s.id"
       >
         <div class="mb-2 flex items-start justify-between gap-2">
           <div class="break-all text-gray-200">{{ displayLeader(s) }}</div>
@@ -156,7 +157,7 @@ async function fetch() {
           <div>
             Order:
             <StatusBadge v-if="s.order_status" :status="s.order_status" />
-            <span v-else class="text-gray-500">—</span>
+            <span v-else class="text-gray-400">—</span>
           </div>
           <div class="col-span-2">Detected: <span class="text-gray-300">{{ new Date(s.detected_at).toLocaleString() }}</span></div>
         </div>
@@ -191,16 +192,16 @@ async function fetch() {
           <td class="py-2"><StatusBadge :status="s.decision" /></td>
           <td class="py-2">
             <StatusBadge v-if="s.order_status" :status="s.order_status" />
-            <span v-else class="text-gray-500">—</span>
+            <span v-else class="text-gray-400">—</span>
           </td>
-          <td class="py-2 text-gray-500">{{ new Date(s.detected_at).toLocaleString() }}</td>
+          <td class="py-2 text-gray-400">{{ new Date(s.detected_at).toLocaleString() }}</td>
         </tr>
       </tbody>
     </table>
-    <div v-else-if="signalQuery.trim() && !isLoading && !error" class="py-12 text-center text-gray-500">
+    <div v-else-if="signalQuery.trim() && !isLoading && !error" class="py-12 text-center text-gray-400">
       No signals match "{{ signalQuery }}".
     </div>
-    <div v-else-if="!isLoading && !error" class="py-12 text-center text-gray-500">
+    <div v-else-if="!isLoading && !error" class="py-12 text-center text-gray-400">
       No signals detected yet.
     </div>
   </div>
