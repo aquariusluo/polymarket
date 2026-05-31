@@ -49,13 +49,18 @@ if [[ -z "$LAUNCH_OUT" ]]; then
   print_check "WARN" "LaunchAgent" "launchctl entry not found"
   WARN=$((WARN + 1))
 else
-  LAST_EXIT="$(echo "$LAUNCH_OUT" | sed -n 's/.*last exit code = \([0-9-]\+\).*/\1/p' | head -n1)"
-  STATE="$(echo "$LAUNCH_OUT" | sed -n 's/.*state = \(.*\)$/\1/p' | head -n1)"
-  if [[ "${LAST_EXIT:-0}" != "0" ]]; then
-    print_check "WARN" "LaunchAgent" "state=${STATE:-unknown}, last_exit_code=${LAST_EXIT}"
+  LAST_EXIT="$(echo "$LAUNCH_OUT" | sed -nE 's/^[[:space:]]*last exit code = ([0-9-]+).*/\1/p' | head -n1)"
+  STATE="$(echo "$LAUNCH_OUT" | sed -nE 's/^[[:space:]]*state = (.*)$/\1/p' | head -n1)"
+  STATE="${STATE:-unknown}"
+  LAST_EXIT="${LAST_EXIT:-unknown}"
+  if [[ "$STATE" != "running" ]]; then
+    print_check "WARN" "LaunchAgent" "state=$STATE, last_exit_code=$LAST_EXIT"
+    WARN=$((WARN + 1))
+  elif [[ "$LAST_EXIT" != "0" && "$LAST_EXIT" != "unknown" ]]; then
+    print_check "WARN" "LaunchAgent" "state=$STATE, last_exit_code=$LAST_EXIT"
     WARN=$((WARN + 1))
   else
-    print_check "PASS" "LaunchAgent" "state=${STATE:-unknown}, last_exit_code=0"
+    print_check "PASS" "LaunchAgent" "state=$STATE, last_exit_code=$LAST_EXIT"
   fi
 fi
 
@@ -64,7 +69,7 @@ if [[ ! -f "$MONITOR_LOG" ]]; then
   print_check "WARN" "MonitorLog" "missing $MONITOR_LOG"
   WARN=$((WARN + 1))
 else
-  LAST_TS="$(tail -n 200 "$MONITOR_LOG" | rg '"timestamp"' | tail -n1 | sed -n 's/.*"timestamp": *"\([^"]*\)".*/\1/p')"
+  LAST_TS="$(tail -n 200 "$MONITOR_LOG" | rg '"timestamp"' | tail -n1 | sed -n 's/.*"timestamp": *"\([^"]*\)".*/\1/p' || true)"
   if [[ -z "$LAST_TS" ]]; then
     print_check "WARN" "MonitorLog" "no parseable timestamp found"
     WARN=$((WARN + 1))
