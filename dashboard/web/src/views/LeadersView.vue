@@ -67,7 +67,7 @@ async function showTrades(wallet: string) {
 
 <template>
   <div class="min-w-0">
-    <div class="sticky top-[var(--mobile-nav-offset,6.5rem)] z-20 mb-3 rounded-lg border border-gray-800/80 bg-gray-950/90 px-3 py-2 backdrop-blur sm:hidden">
+    <div class="mb-4 rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 shadow-lg sm:hidden">
       <div class="flex items-center justify-between">
         <h1 class="text-lg font-bold text-white">Leaders</h1>
         <button
