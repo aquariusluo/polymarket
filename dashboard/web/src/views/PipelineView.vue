@@ -37,7 +37,7 @@ const fmtTime = (s: string | null) => s ? new Date(s).toLocaleString() : '—'
     </div>
 
     <!-- Error Alert -->
-    <div v-if="error && !runs.length" class="mb-6 flex flex-col gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-red-400 sm:flex-row sm:items-center sm:justify-between">
+    <div v-if="error && !runs.length" role="alert" class="mb-6 flex flex-col gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-red-400 sm:flex-row sm:items-center sm:justify-between">
       <span class="break-words">Failed to load pipeline data. {{ error.message }}</span>
       <button @click="refresh" class="min-h-11 rounded bg-red-800 px-3 py-2 text-xs text-white transition hover:bg-red-700">
         Retry

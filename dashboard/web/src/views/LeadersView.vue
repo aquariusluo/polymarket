@@ -83,6 +83,7 @@ async function showTrades(wallet: string) {
       <input
         v-model="leaderQuery"
         type="text"
+        aria-label="Search leaders by name or wallet"
         placeholder="Search leader or wallet..."
         class="mt-2 min-h-11 w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-xs text-gray-200 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
       />
@@ -97,6 +98,7 @@ async function showTrades(wallet: string) {
         <input
           v-model="leaderQuery"
           type="text"
+          aria-label="Search leaders by name or wallet"
           placeholder="Search leader or wallet..."
           class="hidden w-64 rounded-md border border-gray-700 bg-gray-900 min-h-11 px-2.5 py-1.5 text-xs text-gray-200 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none sm:block"
         />
@@ -110,7 +112,7 @@ async function showTrades(wallet: string) {
     </div>
 
     <!-- Error Alert -->
-    <div v-if="error && !leaders.length" class="mb-6 flex flex-col gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-red-400 sm:flex-row sm:items-center sm:justify-between">
+    <div v-if="error && !leaders.length" role="alert" class="mb-6 flex flex-col gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-red-400 sm:flex-row sm:items-center sm:justify-between">
       <span class="break-words">Failed to load leaders. {{ error.message }}</span>
       <button @click="refresh" class="min-h-11 rounded bg-red-800 px-3 py-2 text-xs text-white transition hover:bg-red-700">
         Retry
@@ -191,7 +193,12 @@ async function showTrades(wallet: string) {
             :key="l.wallet"
             class="border-b border-gray-800 text-gray-300 cursor-pointer hover:bg-gray-800/50 transition-colors"
             :class="{ 'bg-gray-800/50': selectedLeader === l.wallet }"
+            role="button"
+            tabindex="0"
+            :aria-expanded="selectedLeader === l.wallet"
             @click="showTrades(l.wallet)"
+            @keydown.enter="showTrades(l.wallet)"
+            @keydown.space.prevent="showTrades(l.wallet)"
           >
             <td class="py-2">{{ l.rank }}</td>
             <td class="py-2">{{ displayLeaderName(l) }}</td>

@@ -18,12 +18,12 @@ if [[ "${1:-}" == "--json" ]]; then
 fi
 CHECK_LINES=()
 PYTHON_BIN="$(command -v python3 || true)"
+PYTHON_MISSING=0
 if [[ -z "$PYTHON_BIN" && -x "$PROJECT_DIR/.venv/bin/python" ]]; then
   PYTHON_BIN="$PROJECT_DIR/.venv/bin/python"
 fi
 if [[ -z "$PYTHON_BIN" ]]; then
-  echo "[WARN] Python - neither python3 nor .venv/bin/python found"
-  WARN=$((WARN + 1))
+  PYTHON_MISSING=1
 fi
 
 print_check() {
@@ -41,6 +41,12 @@ if [[ "$OUTPUT_JSON" -eq 0 ]]; then
   echo "project=$PROJECT_DIR"
   echo "time=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo
+fi
+
+if [[ "$PYTHON_MISSING" -eq 1 ]]; then
+  print_check "WARN" "Python" "neither python3 nor .venv/bin/python found"
+  WARN=$((WARN + 1))
+  FAIL=$((FAIL + 1))
 fi
 
 # 1) launchd status
@@ -72,6 +78,9 @@ else
   LAST_TS="$(tail -n 200 "$MONITOR_LOG" | rg '"timestamp"' | tail -n1 | sed -n 's/.*"timestamp": *"\([^"]*\)".*/\1/p' || true)"
   if [[ -z "$LAST_TS" ]]; then
     print_check "WARN" "MonitorLog" "no parseable timestamp found"
+    WARN=$((WARN + 1))
+  elif [[ "$PYTHON_MISSING" -eq 1 ]]; then
+    print_check "WARN" "MonitorLog" "python unavailable; freshness check skipped"
     WARN=$((WARN + 1))
   else
     LAST_EPOCH="$("$PYTHON_BIN" - <<'PY' "$LAST_TS"
@@ -117,6 +126,9 @@ fi
 # 4) db progression snapshot
 if [[ ! -f "$DB_PATH" ]]; then
   print_check "WARN" "Database" "missing $DB_PATH"
+  WARN=$((WARN + 1))
+elif [[ "$PYTHON_MISSING" -eq 1 ]]; then
+  print_check "WARN" "Database" "python unavailable; db checks skipped"
   WARN=$((WARN + 1))
 else
   DB_STATS="$("$PYTHON_BIN" - <<'PY' "$DB_PATH"
@@ -185,7 +197,11 @@ elif [[ "$WARN" -gt 0 ]]; then
 fi
 
 if [[ "$OUTPUT_JSON" -eq 1 ]]; then
-  "$PYTHON_BIN" - "$PROJECT_DIR" "$SUMMARY_STATUS" "$FAIL" "$WARN" "${CHECK_LINES[@]}" <<'PY'
+  if [[ "$PYTHON_MISSING" -eq 1 ]]; then
+    printf '{"project":"%s","summary":"%s","fail":%d,"warn":%d,"checks":[]}\n' \
+      "$PROJECT_DIR" "$SUMMARY_STATUS" "$FAIL" "$WARN"
+  else
+    "$PYTHON_BIN" - "$PROJECT_DIR" "$SUMMARY_STATUS" "$FAIL" "$WARN" "${CHECK_LINES[@]}" <<'PY'
 import json, sys
 project = sys.argv[1]
 summary = sys.argv[2]
@@ -203,6 +219,7 @@ print(json.dumps({
     "checks": checks,
 }, ensure_ascii=False))
 PY
+  fi
 else
   echo
   if [[ "$SUMMARY_STATUS" == "FAIL" ]]; then

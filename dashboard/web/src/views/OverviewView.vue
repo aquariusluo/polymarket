@@ -35,7 +35,7 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
     </div>
 
     <!-- Error Alert -->
-    <div v-if="error && !data" class="mb-6 flex flex-col gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-red-400 sm:flex-row sm:items-center sm:justify-between">
+    <div v-if="error && !data" role="alert" class="mb-6 flex flex-col gap-3 rounded-lg border border-red-800 bg-red-900/20 p-4 text-red-400 sm:flex-row sm:items-center sm:justify-between">
       <span class="break-words">Failed to load overview data. {{ error.message }}</span>
       <button @click="refresh" class="min-h-11 rounded bg-red-800 px-3 py-2 text-xs text-white transition hover:bg-red-700">
         Retry
