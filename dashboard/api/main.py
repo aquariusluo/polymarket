@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import hmac
+import json
 import logging
 import os
+import time
+from collections import defaultdict, deque
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +45,11 @@ def create_app() -> FastAPI:
             response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
         return response
 
+    # Lightweight in-memory request limiter to protect SQLite-backed endpoints.
+    rate_limit_window_seconds = int(os.getenv('DASHBOARD_RATE_LIMIT_WINDOW_SECONDS', '10'))
+    rate_limit_max_requests = int(os.getenv('DASHBOARD_RATE_LIMIT_MAX_REQUESTS', '120'))
+    request_buckets: dict[str, deque[float]] = defaultdict(deque)
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_origins(),
@@ -68,6 +76,49 @@ def create_app() -> FastAPI:
         if not provided_ok and not bearer_ok:
             return _apply_security_headers(JSONResponse({'detail': 'Unauthorized'}, status_code=401))
         return await call_next(request)
+
+    @app.middleware("http")
+    async def request_guard_and_log(request: Request, call_next):
+        started = time.perf_counter()
+        client_ip = request.client.host if request.client else 'unknown'
+        bucket = request_buckets[client_ip]
+        now = time.monotonic()
+        while bucket and bucket[0] <= now - rate_limit_window_seconds:
+            bucket.popleft()
+        if len(bucket) >= rate_limit_max_requests:
+            response = JSONResponse({'detail': 'Too Many Requests'}, status_code=429)
+            response.headers['Retry-After'] = str(rate_limit_window_seconds)
+            response = _apply_security_headers(response)
+            logging.getLogger('dashboard.api.access').warning(
+                json.dumps(
+                    {
+                        'event': 'request_rejected',
+                        'method': request.method,
+                        'path': request.url.path,
+                        'status_code': response.status_code,
+                        'client_ip': client_ip,
+                        'reason': 'rate_limit',
+                    }
+                )
+            )
+            return response
+        bucket.append(now)
+
+        response = await call_next(request)
+        duration_ms = round((time.perf_counter() - started) * 1000, 2)
+        logging.getLogger('dashboard.api.access').info(
+            json.dumps(
+                {
+                    'event': 'request_completed',
+                    'method': request.method,
+                    'path': request.url.path,
+                    'status_code': response.status_code,
+                    'client_ip': client_ip,
+                    'duration_ms': duration_ms,
+                }
+            )
+        )
+        return response
 
     app.include_router(overview.router)
     app.include_router(portfolio.router)

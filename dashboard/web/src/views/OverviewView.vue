@@ -25,7 +25,7 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
         <span v-if="isRefetching" class="text-xs text-blue-400 animate-pulse">Refreshing...</span>
       </div>
       <div class="flex flex-col sm:items-end">
-        <span v-if="lastRefreshed" class="text-xs text-gray-400">
+        <span v-if="lastRefreshed" class="text-xs text-gray-300">
           Updated {{ lastRefreshed.toLocaleTimeString() }}
         </span>
         <button v-if="error" @click="refresh" class="min-h-11 px-3 py-2 text-xs text-red-400 underline hover:text-red-300">
@@ -43,7 +43,7 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
     </div>
 
     <div v-if="isLoading" class="text-gray-400 animate-pulse py-8 text-center">
-      <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-purple-500 mr-2"></div>
+      <div class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500 mr-2"></div>
       Loading dashboard overview...
     </div>
 
@@ -66,23 +66,23 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
         <h2 class="text-sm font-semibold text-gray-300 mb-3">Gate Status</h2>
         <div class="mb-3 flex flex-wrap items-center gap-2">
           <StatusBadge :status="data.gate_status" />
-          <span class="break-all text-sm text-gray-400">{{ data.gate_decision }}</span>
+          <span class="break-all text-sm text-gray-300">{{ data.gate_decision }}</span>
         </div>
-        <div class="mb-3 grid grid-cols-1 gap-1 text-xs text-gray-400 sm:grid-cols-2 sm:gap-3">
+        <div class="mb-3 grid grid-cols-1 gap-1 text-xs text-gray-300 sm:grid-cols-2 sm:gap-3">
           <span>Mode: <span class="break-all text-gray-300">{{ data.execution_mode }}</span></span>
           <span>Pipeline: <span class="break-all text-gray-300">{{ data.pipeline_status ?? 'idle' }}</span></span>
         </div>
-        <div v-if="Object.keys(data.gate_thresholds).length" class="mb-3 grid grid-cols-1 gap-1 text-xs text-gray-400 sm:grid-cols-3 sm:gap-2">
+        <div v-if="Object.keys(data.gate_thresholds).length" class="mb-3 grid grid-cols-1 gap-1 text-xs text-gray-300 sm:grid-cols-3 sm:gap-2">
           <div>Fills needed: <span class="text-gray-300">{{ data.gate_thresholds.min_filled_orders_window }}</span></div>
           <div>Max ratio: <span class="text-gray-300">{{ data.gate_thresholds.max_accept_to_fill_ratio }}:1</span></div>
           <div>Max drawdown: <span class="text-gray-300">{{ data.gate_thresholds.max_drawdown_pct }}%</span></div>
         </div>
-        <ul v-if="data.gate_notes.length" class="list-disc space-y-1 pl-5 text-xs text-gray-400">
+        <ul v-if="data.gate_notes.length" class="list-disc space-y-1 pl-5 text-xs text-gray-300">
           <li v-for="(note, i) in data.gate_notes" :key="i">{{ note }}</li>
         </ul>
       </div>
     </template>
-    <div v-else-if="!error" class="text-center py-12 text-gray-400 bg-gray-800 rounded-lg">
+    <div v-else-if="!error" class="text-center py-12 text-gray-300 bg-gray-800 rounded-lg">
       No overview data available.
     </div>
   </div>

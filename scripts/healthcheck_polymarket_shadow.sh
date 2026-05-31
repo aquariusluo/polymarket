@@ -44,7 +44,7 @@ if [[ "$OUTPUT_JSON" -eq 0 ]]; then
 fi
 
 if [[ "$PYTHON_MISSING" -eq 1 ]]; then
-  print_check "WARN" "Python" "neither python3 nor .venv/bin/python found"
+  print_check "FAIL" "Python" "neither python3 nor .venv/bin/python found"
   WARN=$((WARN + 1))
   FAIL=$((FAIL + 1))
 fi
@@ -60,8 +60,12 @@ else
   STATE="${STATE:-unknown}"
   LAST_EXIT="${LAST_EXIT:-unknown}"
   if [[ "$STATE" != "running" ]]; then
-    print_check "WARN" "LaunchAgent" "state=$STATE, last_exit_code=$LAST_EXIT"
-    WARN=$((WARN + 1))
+    if [[ "$LAST_EXIT" == "0" || "$LAST_EXIT" == "unknown" ]]; then
+      print_check "PASS" "LaunchAgent" "state=$STATE (interval mode), last_exit_code=$LAST_EXIT"
+    else
+      print_check "WARN" "LaunchAgent" "state=$STATE, last_exit_code=$LAST_EXIT"
+      WARN=$((WARN + 1))
+    fi
   elif [[ "$LAST_EXIT" != "0" && "$LAST_EXIT" != "unknown" ]]; then
     print_check "WARN" "LaunchAgent" "state=$STATE, last_exit_code=$LAST_EXIT"
     WARN=$((WARN + 1))
@@ -134,7 +138,7 @@ else
   DB_STATS="$("$PYTHON_BIN" - <<'PY' "$DB_PATH"
 import sqlite3, sys
 db = sys.argv[1]
-conn = sqlite3.connect(db)
+conn = sqlite3.connect(db, timeout=3)
 cur = conn.cursor()
 queries = [
 ("job_runs_24h", "select count(*) from job_runs where started_at >= datetime('now','-1 day')"),

@@ -59,7 +59,7 @@ async function fetch() {
           Refresh
         </button>
       </div>
-      <p v-if="lastRefreshed" class="mt-1 text-[11px] text-gray-400">
+      <p v-if="lastRefreshed" class="mt-1 text-xs text-gray-300">
         Updated {{ lastRefreshed.toLocaleTimeString() }}
       </p>
       <input
@@ -84,7 +84,7 @@ async function fetch() {
           placeholder="Search leader, wallet, market..."
           class="hidden w-72 rounded-md border border-gray-700 bg-gray-900 min-h-11 px-2.5 py-1.5 text-xs text-gray-200 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none sm:block"
         />
-        <span v-if="lastRefreshed" class="text-xs text-gray-400">
+        <span v-if="lastRefreshed" class="text-xs text-gray-300">
           Updated {{ lastRefreshed.toLocaleTimeString() }}
         </span>
         <button v-if="error" @click="refresh" class="min-h-11 px-3 py-2 text-xs text-red-400 underline hover:text-red-300">
@@ -109,23 +109,23 @@ async function fetch() {
     <template v-if="funnel">
       <div class="mb-5 grid grid-cols-2 gap-3 sm:mb-6 sm:grid-cols-5">
         <div class="bg-gray-800 rounded-lg p-4 text-center">
-          <div class="text-xs text-gray-400 mb-1">Total Trades</div>
+          <div class="text-xs text-gray-300 mb-1">Total Trades</div>
           <div class="text-lg font-bold text-white">{{ funnel.total_trades }}</div>
         </div>
         <div class="bg-gray-800 rounded-lg p-4 text-center">
-          <div class="text-xs text-gray-400 mb-1">Accepted</div>
+          <div class="text-xs text-gray-300 mb-1">Accepted</div>
           <div class="text-lg font-bold text-green-400">{{ funnel.accepted_signals }}</div>
         </div>
         <div class="bg-gray-800 rounded-lg p-4 text-center">
-          <div class="text-xs text-gray-400 mb-1">Rejected</div>
+          <div class="text-xs text-gray-300 mb-1">Rejected</div>
           <div class="text-lg font-bold text-red-400">{{ funnel.rejected_signals }}</div>
         </div>
         <div class="bg-gray-800 rounded-lg p-4 text-center">
-          <div class="text-xs text-gray-400 mb-1">Filled</div>
+          <div class="text-xs text-gray-300 mb-1">Filled</div>
           <div class="text-lg font-bold text-blue-400">{{ funnel.filled_orders }}</div>
         </div>
         <div class="bg-gray-800 rounded-lg p-4 text-center">
-          <div class="text-xs text-gray-400 mb-1">Pending</div>
+          <div class="text-xs text-gray-300 mb-1">Pending</div>
           <div class="text-lg font-bold text-yellow-400">{{ funnel.pending_signals }}</div>
         </div>
       </div>
@@ -136,7 +136,7 @@ async function fetch() {
         <div class="h-5 w-10 bg-gray-700 rounded mx-auto"></div>
       </div>
     </div>
-    <div v-else-if="!error" class="bg-gray-800 rounded-lg p-8 text-center text-gray-400 mb-6">
+    <div v-else-if="!error" class="bg-gray-800 rounded-lg p-8 text-center text-gray-300 mb-6">
       No funnel data available.
     </div>
 
