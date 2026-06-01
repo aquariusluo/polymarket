@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.aquariusluo.polymarket.dashboard-web</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{NODE_BIN}}</string>
+    <string>{{PROJECT_DIR}}/dashboard/web/node_modules/vite/bin/vite.js</string>
+    <string>--host</string>
+    <string>0.0.0.0</string>
+    <string>--port</string>
+    <string>5173</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>{{PROJECT_DIR}}/dashboard/web</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+
+  <key>ExitTimeOut</key>
+  <integer>1800</integer>
+
+  <key>StandardOutPath</key>
+  <string>{{PROJECT_DIR}}/tmp/dashboard-web.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>{{PROJECT_DIR}}/tmp/dashboard-web.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

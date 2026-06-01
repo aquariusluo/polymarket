@@ -29,6 +29,16 @@ SQLite at `data/app.db` (configurable via `DB_PATH`). Tables: `leaders`, `leader
 
 Real-time dashboard for pipeline status, portfolio performance, and gate evaluation.
 
+### Dashboard healthcheck
+
+```bash
+# Human-readable output (0=PASS, 1=PASS with warnings, 2=FAIL)
+scripts/healthcheck_dashboard.sh
+
+# JSON output
+scripts/healthcheck_dashboard.sh --json
+```
+
 ### Stack
 
 - **Backend**: FastAPI + uvicorn (read-only GET endpoints)
@@ -48,10 +58,13 @@ Real-time dashboard for pipeline status, portfolio performance, and gate evaluat
 
 ```bash
 # Backend (port 8000)
-cd dashboard && python api/main.py
+uvicorn dashboard.api.main:app --host 127.0.0.1 --port 8000
 
 # Frontend (port 5173, dev mode)
-cd dashboard/web && npm run dev
+cd dashboard/web && npm run dev -- --host 0.0.0.0 --port 5173
+
+# Or start both with one command
+scripts/start_dashboard_dev.sh
 ```
 
 ## Auto-Follow Gate
