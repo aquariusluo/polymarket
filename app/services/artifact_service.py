@@ -18,6 +18,29 @@ def _write_json(path: Path, payload: dict[str, Any]) -> str:
     return str(path)
 
 
+def _format_reason_lines(title: str, counts: dict[str, Any] | None) -> str:
+    if not counts:
+        return f'- {title}: none\n'
+    parts = [f'{key}={counts[key]}' for key in counts]
+    return f'- {title}: {", ".join(parts)}\n'
+
+
+def _format_stage_category_lines(title: str, counts: dict[str, dict[str, Any]] | None) -> str:
+    if not counts:
+        return f'- {title}: none\n'
+    parts: list[str] = []
+    for stage, categories in counts.items():
+        category_parts = [f'{category}={categories[category]}' for category in categories]
+        parts.append(f'{stage}({", ".join(category_parts)})')
+    return f'- {title}: ' + ' | '.join(parts) + '\n'
+
+
+def _format_note_lines(title: str, notes: list[str] | None) -> str:
+    if not notes:
+        return f'- {title}: none\n'
+    return f'- {title}: ' + ' | '.join(notes) + '\n'
+
+
 def write_latest_summary(report: dict[str, Any], *, project_root: str | Path | None = None) -> dict[str, str]:
     report_dir = _reports_dir(project_root)
     md_path = report_dir / 'latest-summary.md'
@@ -34,7 +57,7 @@ def write_latest_summary(report: dict[str, Any], *, project_root: str | Path | N
 - Accepted Signals: {report.get("accepted_signal_count")}
 - Filled Orders: {report.get("filled_order_count")}
 - Rejected Orders: {report.get("rejected_order_count")}
-'''
+{_format_reason_lines("Signal Reject Reasons", report.get("signal_rejection_reasons"))}{_format_reason_lines("Execution Rejections", report.get("execution_rejection_reasons"))}{_format_reason_lines("Execution Suppressions", report.get("execution_suppression_reasons"))}'''
     md_path.write_text(markdown, encoding='utf-8')
     return {
         'report_markdown_path': str(md_path),
@@ -59,7 +82,7 @@ def write_performance_review(report: dict[str, Any], *, project_root: str | Path
 - Open Positions: {report.get("open_position_count")}
 - Filled Orders: {report.get("filled_order_count")}
 - Rejected Orders: {report.get("rejected_order_count")}
-'''
+{_format_reason_lines("Signal Reject Reasons", report.get("signal_rejection_reasons"))}{_format_reason_lines("Execution Rejections", report.get("execution_rejection_reasons"))}{_format_reason_lines("Execution Suppressions", report.get("execution_suppression_reasons"))}'''
     md_path.write_text(markdown, encoding='utf-8')
     return {
         'report_markdown_path': str(md_path),
@@ -106,6 +129,30 @@ def write_auto_follow_gate(report: dict[str, Any], *, project_root: str | Path |
 - Thresholds: {report.get("thresholds")}
 - Notes: {report.get("notes")}
 '''
+    md_path.write_text(markdown, encoding='utf-8')
+    return {
+        'report_markdown_path': str(md_path),
+        'report_json_path': _write_json(json_path, report),
+    }
+
+
+def write_shadow_evidence(report: dict[str, Any], *, project_root: str | Path | None = None) -> dict[str, str]:
+    report_dir = _reports_dir(project_root)
+    md_path = report_dir / 'shadow-evidence.md'
+    json_path = report_dir / 'shadow-evidence.json'
+    markdown = f'''# Shadow Evidence Report
+
+- Strategy Verdict: {report.get("strategy_verdict")}
+- Generated At: {report.get("generated_at")}
+- Total Signals: {report.get("total_signal_count")}
+- Rejected Signals: {report.get("rejected_signal_count")}
+- Tradable Candidate Count: {report.get("tradable_candidate_count")}
+- Tradable Universe Share: {report.get("tradable_universe_share")}
+- Snapshot Coverage Count: {report.get("snapshot_coverage_count")}
+- Snapshot Coverage Rate: {report.get("snapshot_coverage_rate")}
+- Sim-Order Coverage Count: {report.get("sim_order_coverage_count")}
+- Sim-Order Coverage Rate: {report.get("sim_order_coverage_rate")}
+{_format_reason_lines("Universe Quality Reasons", report.get("universe_quality_reasons"))}{_format_reason_lines("Structural Copyability Proxy Reasons", report.get("structural_copyability_proxy_reasons"))}{_format_stage_category_lines("Signal Evidence Counts", report.get("signal_evidence_counts"))}{_format_note_lines("Limitations", report.get("limitations"))}'''
     md_path.write_text(markdown, encoding='utf-8')
     return {
         'report_markdown_path': str(md_path),

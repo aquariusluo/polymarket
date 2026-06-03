@@ -17,6 +17,9 @@ class Side(str, Enum):
     SELL = 'SELL'
 
 
+MISSING_CONDITION_ID = 'missing-condition-id'
+
+
 
 def normalize_side(value: Any) -> Side | None:
     if value in (None, ''):

@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 
 from app.jobs import (
+    run_backfill_signals,
     run_daily_report,
     run_final_report,
     run_generate_signals,
@@ -13,6 +14,7 @@ from app.jobs import (
     run_prune_data,
     run_select_leaders,
     run_shadow,
+    run_shadow_evidence,
     run_simulate,
 )
 from app.storage.db import decimal_storage_issues, get_connection, init_db
@@ -64,6 +66,10 @@ def cmd_generate_signals() -> None:
     _print_mapping(run_generate_signals.run())
 
 
+def cmd_backfill_signals() -> None:
+    _print_mapping(run_backfill_signals.run())
+
+
 def cmd_simulate() -> None:
     _print_mapping(run_simulate.run())
 
@@ -98,6 +104,10 @@ def cmd_gate_report() -> None:
     _print_mapping(run_gate_report.run())
 
 
+def cmd_shadow_evidence() -> None:
+    _print_mapping(run_shadow_evidence.run())
+
+
 def cmd_prune_data() -> None:
     _print_mapping(run_prune_data.run())
 
@@ -110,6 +120,7 @@ def main() -> None:
         print("  python -m app.main select-leaders")
         print("  python -m app.main poll-trades")
         print("  python -m app.main generate-signals")
+        print("  python -m app.main backfill-signals")
         print("  python -m app.main simulate")
         print("  python -m app.main mark-to-market")
         print("  python -m app.main daily-report")
@@ -117,6 +128,7 @@ def main() -> None:
         print("  python -m app.main run-loop")
         print("  python -m app.main shadow-run")
         print("  python -m app.main gate-report")
+        print("  python -m app.main shadow-evidence")
         print("  python -m app.main prune-data")
         raise SystemExit(1)
 
@@ -132,6 +144,8 @@ def main() -> None:
         cmd_poll_trades()
     elif cmd == "generate-signals":
         cmd_generate_signals()
+    elif cmd == "backfill-signals":
+        cmd_backfill_signals()
     elif cmd == "simulate":
         cmd_simulate()
     elif cmd == "mark-to-market":
@@ -146,6 +160,8 @@ def main() -> None:
         cmd_shadow_run()
     elif cmd == "gate-report":
         cmd_gate_report()
+    elif cmd == "shadow-evidence":
+        cmd_shadow_evidence()
     elif cmd == "prune-data":
         cmd_prune_data()
     else:

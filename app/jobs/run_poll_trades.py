@@ -22,6 +22,10 @@ RECOVERABLE_LEADER_POLL_ERRORS = (
 )
 
 
+def _normalize_wallet(value: object) -> str:
+    return str(value).strip().lower()
+
+
 def run(settings: Settings | None = None, *, project_root=None, trades_client: Any | None = None, trades_client_cls: type | None = None, conn=None) -> dict:
     settings = settings or get_settings()
 
@@ -35,11 +39,18 @@ def run(settings: Settings | None = None, *, project_root=None, trades_client: A
         leader_errors: list[dict[str, str]] = []
         leader_repo = LeaderRepository(conn)
         trade_repo = LeaderTradeRepository(conn)
+        excluded_wallets = {_normalize_wallet(wallet) for wallet in settings.scarf.excluded_wallets if _normalize_wallet(wallet)}
         leaders = leader_repo.get_latest_leaders()
         if not leaders:
             raise RuntimeError("No leaders found. Run `select-leaders` first.")
+        fetched_leaders = 0
+        excluded_leaders = 0
         for leader in leaders:
             wallet = leader['wallet']
+            if _normalize_wallet(wallet) in excluded_wallets:
+                excluded_leaders += 1
+                continue
+            fetched_leaders += 1
             leader_name = leader['pseudonym'] or leader['name'] or wallet
             try:
                 trades = client.fetch_recent_trades(
@@ -62,6 +73,8 @@ def run(settings: Settings | None = None, *, project_root=None, trades_client: A
                     skipped += 1
         return {
             'leaders_polled': len(leaders),
+            'leaders_fetched': fetched_leaders,
+            'leaders_excluded': excluded_leaders,
             'trades_inserted': inserted,
             'trades_skipped': skipped,
             'leader_errors': len(leader_errors),

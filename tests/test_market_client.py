@@ -44,6 +44,20 @@ class UnlabeledTokenMarketClient(StubMarketClient):
         }
 
 
+class NamedOutcomeMarketClient(StubMarketClient):
+    def fetch_clob_market(self, condition_id: str):
+        return {
+            "question": "Roland Garros ATP: Felix Auger-Aliassime vs Flavio Cobolli",
+            "market_slug": "atp-augeral-cobolli-2026-06-03",
+            "active": True,
+            "closed": False,
+            "tokens": [
+                {"token_id": "token-felix", "outcome": "Felix Auger-Aliassime"},
+                {"token_id": "token-flavio", "outcome": "Flavio Cobolli"},
+            ],
+        }
+
+
 def test_fetch_market_maps_yes_no_tokens_by_outcome_label():
     market = StubMarketClient().fetch_market("cond1")
 
@@ -54,5 +68,14 @@ def test_fetch_market_maps_yes_no_tokens_by_outcome_label():
 
 
 def test_fetch_market_rejects_unlabeled_binary_tokens():
-    with pytest.raises(RuntimeError, match='Unable to determine yes/no token mapping'):
+    with pytest.raises(RuntimeError, match='Unable to determine binary token mapping'):
         UnlabeledTokenMarketClient().fetch_market('cond1')
+
+
+def test_fetch_market_accepts_named_binary_outcomes():
+    market = NamedOutcomeMarketClient().fetch_market("cond1")
+
+    assert market.yes_token_id == "token-felix"
+    assert market.no_token_id == "token-flavio"
+    assert market.yes_outcome == "Felix Auger-Aliassime"
+    assert market.no_outcome == "Flavio Cobolli"

@@ -236,10 +236,17 @@ class MarketRepository:
 
 
 class SignalRepository:
+    TIMING_SUPPRESSED_REASONS = (
+        'signal_stale',
+        'signal_timestamp_in_future',
+        'trade_too_old_at_fill',
+        'trade_timestamp_in_future',
+    )
+
     def __init__(self, conn: sqlite3.Connection) -> None:
         self.conn = conn
 
-    def insert_if_new(self, trade: LeaderTrade, decision: SignalDecision) -> bool:
+    def insert_if_new(self, trade: LeaderTrade, decision: SignalDecision, *, raw_json: dict | None = None) -> bool:
         cursor = self.conn.execute(
             """
             INSERT OR IGNORE INTO signals (
@@ -260,7 +267,7 @@ class SignalRepository:
                 _decision_value(decision.decision),
                 decision.reason,
                 utc_now_iso(),
-                json.dumps(trade.raw_json),
+                json.dumps(raw_json if raw_json is not None else trade.raw_json),
             ),
         )
         self.conn.commit()
@@ -270,12 +277,17 @@ class SignalRepository:
         threshold = (datetime.now(timezone.utc) - timedelta(minutes=cooldown_minutes)).isoformat()
         row = self.conn.execute(
             """
-            SELECT id FROM signals
-            WHERE wallet = ? AND condition_id = ? AND asset_id = ?
-              AND decision = 'accepted' AND detected_at >= ?
-            ORDER BY id DESC LIMIT 1
+            SELECT s.id
+            FROM signals s
+            LEFT JOIN sim_orders so ON so.signal_id = s.id
+            WHERE s.wallet = ? AND s.condition_id = ? AND s.asset_id = ?
+              AND s.decision = 'accepted' AND s.detected_at >= ?
+              AND (
+                  so.id IS NULL OR so.reason NOT IN (?, ?, ?, ?)
+              )
+            ORDER BY s.id DESC LIMIT 1
             """,
-            (wallet, condition_id, asset_id, threshold),
+            (wallet, condition_id, asset_id, threshold, *self.TIMING_SUPPRESSED_REASONS),
         ).fetchone()
         return row is not None
 
@@ -283,12 +295,17 @@ class SignalRepository:
         threshold = (datetime.now(timezone.utc) - timedelta(minutes=cooldown_minutes)).isoformat()
         row = self.conn.execute(
             """
-            SELECT id FROM signals
-            WHERE condition_id = ? AND asset_id = ?
-              AND decision = 'accepted' AND detected_at >= ?
-            ORDER BY id DESC LIMIT 1
+            SELECT s.id
+            FROM signals s
+            LEFT JOIN sim_orders so ON so.signal_id = s.id
+            WHERE s.condition_id = ? AND s.asset_id = ?
+              AND s.decision = 'accepted' AND s.detected_at >= ?
+              AND (
+                  so.id IS NULL OR so.reason NOT IN (?, ?, ?, ?)
+              )
+            ORDER BY s.id DESC LIMIT 1
             """,
-            (condition_id, asset_id, threshold),
+            (condition_id, asset_id, threshold, *self.TIMING_SUPPRESSED_REASONS),
         ).fetchone()
         return row is not None
 
@@ -321,14 +338,86 @@ class SignalRepository:
         return list(
             self.conn.execute(
                 """
-                SELECT s.*
+                SELECT s.*, lt.timestamp AS trade_timestamp
                 FROM signals s
+                LEFT JOIN leader_trades lt ON lt.id = s.leader_trade_id
                 LEFT JOIN sim_orders so ON so.signal_id = s.id
                 WHERE s.decision = 'accepted' AND so.id IS NULL
                 ORDER BY s.detected_at ASC, s.id ASC
                 LIMIT ?
                 """,
                 (limit,),
+            ).fetchall()
+        )
+
+    def list_recheckable_accepted(self, limit: int = 5000) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                """
+                SELECT
+                    s.id AS signal_id,
+                    s.condition_id AS signal_condition_id,
+                    s.asset_id AS signal_asset_id,
+                    s.market_slug AS signal_market_slug,
+                    s.side AS signal_side,
+                    s.leader_price AS signal_leader_price,
+                    s.raw_json AS signal_raw_json,
+                    lt.*
+                FROM signals s
+                JOIN leader_trades lt ON lt.id = s.leader_trade_id
+                WHERE s.decision = 'accepted'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM sim_orders so
+                      WHERE so.signal_id = s.id
+                        AND so.status IN ('filled', 'suppressed')
+                  )
+                ORDER BY s.detected_at ASC, s.id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        )
+
+    def reclassify(
+        self,
+        signal_id: int,
+        *,
+        decision: Decision | str,
+        reason: str,
+        commit: bool = True,
+    ) -> None:
+        self.conn.execute(
+            """
+            UPDATE signals
+            SET decision = ?, reason = ?
+            WHERE id = ?
+            """,
+            (_decision_value(decision), reason, signal_id),
+        )
+        if commit:
+            self.conn.commit()
+
+    def list_rejected_by_reason(self, reason: str, limit: int = 5000) -> list[sqlite3.Row]:
+        return list(
+            self.conn.execute(
+                """
+                SELECT
+                    s.id AS signal_id,
+                    s.condition_id AS signal_condition_id,
+                    s.asset_id AS signal_asset_id,
+                    s.market_slug AS signal_market_slug,
+                    s.side AS signal_side,
+                    s.leader_price AS signal_leader_price,
+                    s.raw_json AS signal_raw_json,
+                    lt.*
+                FROM signals s
+                JOIN leader_trades lt ON lt.id = s.leader_trade_id
+                WHERE s.decision = 'rejected' AND s.reason = ?
+                ORDER BY s.detected_at ASC, s.id ASC
+                LIMIT ?
+                """,
+                (reason, limit),
             ).fetchall()
         )
 
@@ -459,6 +548,31 @@ class SimOrderRepository:
             (since_iso,),
         ).fetchone()
         return int(row['c']) if row is not None else 0
+
+    def delete_rejected_for_signal(self, signal_id: int, *, commit: bool = True) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM sim_orders
+            WHERE signal_id = ? AND status = 'rejected'
+            """,
+            (signal_id,),
+        )
+        if commit:
+            self.conn.commit()
+        return int(cursor.rowcount)
+
+    def has_rejected_reason(self, signal_id: int, reason: str) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT 1
+            FROM sim_orders
+            WHERE signal_id = ? AND status = 'rejected' AND reason = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (signal_id, reason),
+        ).fetchone()
+        return row is not None
 
 
 @dataclass

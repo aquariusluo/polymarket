@@ -10,11 +10,12 @@ import httpx
 
 from app.config import Settings
 from app.domain.money import money, pct, price, shares, to_decimal, to_float
-from app.domain.models import normalize_side, Side
+from app.domain.models import normalize_side, parse_datetime, Side
 from app.services.market_service import MarketService
-from app.storage.repositories import PositionRepository, SignalRepository, SimOrderRepository
+from app.storage.repositories import PortfolioSnapshotRepository, PositionRepository, SignalRepository, SimOrderRepository
 
 logger = logging.getLogger(__name__)
+FUTURE_TIMESTAMP_TOLERANCE_MINUTES = 5.0
 
 
 @dataclass
@@ -33,6 +34,13 @@ class SimulationService:
         self.signal_repo = SignalRepository(conn)
         self.order_repo = SimOrderRepository(conn)
         self.position_repo = PositionRepository(conn)
+        self.snapshot_repo = PortfolioSnapshotRepository(conn)
+
+    def _effective_bankroll(self) -> Decimal:
+        bankroll = money(self.settings.scarf.bankroll_usd)
+        latest_snapshot = self.snapshot_repo.latest()
+        realized_pnl = money(latest_snapshot.total_realized_pnl) if latest_snapshot is not None else money(0)
+        return money(bankroll + realized_pnl)
 
     def _best_ask(self, book: dict) -> tuple[Decimal | None, Decimal | None]:
         asks = book.get('asks') or []
@@ -48,6 +56,46 @@ class SimulationService:
             return None, None
         first = sorted(normalized, key=lambda x: x[0])[0]
         return first
+
+    def _effective_trade_age_at_fill_minutes(self) -> float:
+        effective = getattr(self.settings, 'effective_max_trade_age_at_fill_minutes', None)
+        if effective is not None:
+            return float(effective)
+        explicit = getattr(self.settings, 'max_trade_age_at_fill_minutes', None)
+        if explicit is not None:
+            return float(explicit)
+        return float(getattr(self.settings, 'max_trade_age_minutes', 60))
+
+    def _signal_time_rejection_reason(self, detected_at) -> str | None:
+        try:
+            detected = parse_datetime(detected_at)
+        except (TypeError, ValueError):
+            logger.warning("treating signal as stale because detected_at is unparseable", extra={'detected_at': detected_at})
+            return 'signal_stale'
+        if detected is None:
+            return 'signal_stale'
+        age_minutes = (datetime.now(timezone.utc) - detected).total_seconds() / 60.0
+        if age_minutes < -FUTURE_TIMESTAMP_TOLERANCE_MINUTES:
+            return 'signal_timestamp_in_future'
+        max_signal_age_minutes = float(getattr(self.settings, 'max_signal_age_minutes', 15))
+        if age_minutes > max_signal_age_minutes:
+            return 'signal_stale'
+        return None
+
+    def _trade_time_rejection_reason(self, trade_timestamp) -> str | None:
+        try:
+            trade_time = parse_datetime(trade_timestamp)
+        except (TypeError, ValueError):
+            logger.warning("treating signal as too old at fill because trade timestamp is unparseable", extra={'trade_timestamp': trade_timestamp})
+            return 'trade_too_old_at_fill'
+        if trade_time is None:
+            return 'trade_too_old_at_fill'
+        age_minutes = (datetime.now(timezone.utc) - trade_time).total_seconds() / 60.0
+        if age_minutes < -FUTURE_TIMESTAMP_TOLERANCE_MINUTES:
+            return 'trade_timestamp_in_future'
+        if age_minutes > self._effective_trade_age_at_fill_minutes():
+            return 'trade_too_old_at_fill'
+        return None
 
     def _reject(self, *, signal_id: int, condition_id: str, asset_id: str, market_slug: str | None, side: str | None,
                 requested_notional: Decimal, leader_price: Decimal | None, reason: str, fill_price: Decimal | None = None,
@@ -83,6 +131,28 @@ class SimulationService:
             requested_notional = money(self.settings.fixed_trade_usdc)
             signal_id = int(row['id'])
 
+            signal_time_reason = self._signal_time_rejection_reason(row['detected_at'])
+            if signal_time_reason is not None:
+                self._reject(
+                    signal_id=signal_id, condition_id=condition_id, asset_id=asset_id,
+                    market_slug=market_slug, side=side, requested_notional=requested_notional,
+                    leader_price=leader_price, reason=signal_time_reason,
+                )
+                inserted_orders += 1
+                rejected += 1
+                continue
+
+            trade_time_reason = self._trade_time_rejection_reason(row['trade_timestamp'])
+            if trade_time_reason is not None:
+                self._reject(
+                    signal_id=signal_id, condition_id=condition_id, asset_id=asset_id,
+                    market_slug=market_slug, side=side, requested_notional=requested_notional,
+                    leader_price=leader_price, reason=trade_time_reason,
+                )
+                inserted_orders += 1
+                rejected += 1
+                continue
+
             if normalized_side is not Side.BUY:
                 self._reject(
                     signal_id=signal_id, condition_id=condition_id, asset_id=asset_id,
@@ -105,7 +175,7 @@ class SimulationService:
                 rejected += 1
                 continue
 
-            bankroll = money(self.settings.scarf.bankroll_usd)
+            bankroll = self._effective_bankroll()
             if bankroll <= 0:
                 self._reject(
                     signal_id=signal_id, condition_id=condition_id, asset_id=asset_id,
@@ -174,7 +244,7 @@ class SimulationService:
                 continue
 
             slippage_pct = pct(((ask_price - leader_price) / leader_price) * Decimal('100'))
-            if abs(slippage_pct) > to_decimal(self.settings.max_slippage_pct):
+            if slippage_pct > to_decimal(self.settings.max_slippage_pct):
                 self._reject(
                     signal_id=signal_id, condition_id=condition_id, asset_id=asset_id,
                     market_slug=market_slug, side=side, requested_notional=requested_notional,

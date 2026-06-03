@@ -210,4 +210,4 @@ DB_DECIMAL_SCHEMA_STRICT=1 python -m app.main run-loop
 
 ## For Agents
 
-See `AGENTS.md` for the full operating contract, file layout, and update rules. See `CLAUDE.md` for Claude Code-specific guidance.
+See `AGENTS.md` for the full operating contract, file layout, and update rules.

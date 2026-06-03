@@ -9,6 +9,9 @@ export interface OverviewData {
   accepted_signal_count: number
   filled_order_count: number
   rejected_order_count: number
+  signal_rejection_reasons: Record<string, number>
+  execution_rejection_reasons: Record<string, number>
+  execution_suppression_reasons: Record<string, number>
   tracked_leader_count: number
   gate_status: string
   gate_decision: string

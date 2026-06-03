@@ -15,6 +15,57 @@ async function fetch() {
 
 const pnlColor = (v: number) => v >= 0 ? 'text-green-400' : 'text-red-400'
 const fmt = (v: number) => `$${v.toFixed(2)}`
+
+const REASON_LABELS: Record<string, string> = {
+  asset_not_in_market_tokens: 'Asset not in market tokens',
+  bankroll_exceeded: 'Bankroll limit reached',
+  bankroll_not_configured: 'Bankroll not configured',
+  book_unavailable: 'Order book unavailable',
+  cooldown_duplicate_signal: 'Cooldown duplicate signal',
+  execution_mode_alert_only: 'Alert-only mode',
+  liquidity_below_threshold: 'Liquidity below threshold',
+  market_inactive_or_closed: 'Market inactive or closed',
+  market_unsupported: 'Market unsupported',
+  max_daily_orders_exceeded: 'Daily order limit reached',
+  missing_condition_id: 'Missing condition ID',
+  missing_leader_price: 'Missing leader price',
+  no_ask_depth: 'No ask depth available',
+  per_market_cap_exceeded: 'Per-market cap reached',
+  processing_error: 'Processing error',
+  signal_stale: 'Signal too old',
+  signal_timestamp_in_future: 'Signal timestamp is in the future',
+  side_not_buy: 'Side is not buy',
+  slippage_too_high: 'Slippage too high',
+  too_close_to_expiry: 'Too close to expiry',
+  trade_timestamp_in_future: 'Trade timestamp is in the future',
+  trade_too_old: 'Trade too old',
+  trade_too_old_at_fill: 'Trade too old at fill',
+  unsupported_side: 'Unsupported side',
+  wallet_excluded: 'Wallet excluded',
+}
+
+function formatReason(reason: string) {
+  if (REASON_LABELS[reason]) return REASON_LABELS[reason]
+  return reason
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function reasonEntries(reasons: Record<string, number>) {
+  return Object.entries(reasons || {})
+}
+
+function reasonTotal(reasons: Record<string, number>) {
+  return reasonEntries(reasons).reduce((sum, [, count]) => sum + count, 0)
+}
+
+function reasonShare(count: number, reasons: Record<string, number>) {
+  const total = reasonTotal(reasons)
+  if (total <= 0) return '0%'
+  return `${Math.round((count / total) * 100)}%`
+}
 </script>
 
 <template>
@@ -60,6 +111,56 @@ const fmt = (v: number) => `$${v.toFixed(2)}`
         <StatCard label="Accepted Signals" :value="String(data.accepted_signal_count)" color="text-green-400" />
         <StatCard label="Filled Orders" :value="String(data.filled_order_count)" color="text-blue-400" />
         <StatCard label="Tracked Leaders" :value="String(data.tracked_leader_count)" />
+      </div>
+
+      <div class="mb-5 rounded-lg bg-gray-800 p-4 sm:mb-6 sm:p-5">
+        <div class="mb-3">
+          <h2 class="text-sm font-semibold text-gray-300">Why Signals Weren't Followed</h2>
+          <p class="mt-1 text-xs text-gray-400">
+            Top-level reasons across signal filtering, execution risk checks, and intentional suppressions.
+          </p>
+        </div>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div class="rounded-lg border border-gray-700/70 bg-gray-900/40 p-3">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-red-300">Signal Rejections</h3>
+            <p class="mt-1 text-[11px] text-gray-400">
+              {{ reasonTotal(data.signal_rejection_reasons) }} total
+            </p>
+            <ul v-if="reasonEntries(data.signal_rejection_reasons).length" class="mt-2 space-y-1 text-xs text-gray-300">
+              <li v-for="[reason, count] in reasonEntries(data.signal_rejection_reasons)" :key="`signal-${reason}`" class="flex items-start justify-between gap-2">
+                <span class="pr-2 text-gray-300">{{ formatReason(reason) }}</span>
+                <span class="shrink-0 text-right text-red-300">{{ count }} <span class="text-[11px] text-gray-400">({{ reasonShare(count, data.signal_rejection_reasons) }})</span></span>
+              </li>
+            </ul>
+            <p v-else class="mt-2 text-xs text-gray-400">None</p>
+          </div>
+          <div class="rounded-lg border border-gray-700/70 bg-gray-900/40 p-3">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-yellow-300">Execution Rejections</h3>
+            <p class="mt-1 text-[11px] text-gray-400">
+              {{ reasonTotal(data.execution_rejection_reasons) }} total
+            </p>
+            <ul v-if="reasonEntries(data.execution_rejection_reasons).length" class="mt-2 space-y-1 text-xs text-gray-300">
+              <li v-for="[reason, count] in reasonEntries(data.execution_rejection_reasons)" :key="`execution-${reason}`" class="flex items-start justify-between gap-2">
+                <span class="pr-2 text-gray-300">{{ formatReason(reason) }}</span>
+                <span class="shrink-0 text-right text-yellow-300">{{ count }} <span class="text-[11px] text-gray-400">({{ reasonShare(count, data.execution_rejection_reasons) }})</span></span>
+              </li>
+            </ul>
+            <p v-else class="mt-2 text-xs text-gray-400">None</p>
+          </div>
+          <div class="rounded-lg border border-gray-700/70 bg-gray-900/40 p-3">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-blue-300">Suppressions (Intentional)</h3>
+            <p class="mt-1 text-[11px] text-gray-400">
+              {{ reasonTotal(data.execution_suppression_reasons) }} total
+            </p>
+            <ul v-if="reasonEntries(data.execution_suppression_reasons).length" class="mt-2 space-y-1 text-xs text-gray-300">
+              <li v-for="[reason, count] in reasonEntries(data.execution_suppression_reasons)" :key="`suppression-${reason}`" class="flex items-start justify-between gap-2">
+                <span class="pr-2 text-gray-300">{{ formatReason(reason) }}</span>
+                <span class="shrink-0 text-right text-blue-300">{{ count }} <span class="text-[11px] text-gray-400">({{ reasonShare(count, data.execution_suppression_reasons) }})</span></span>
+              </li>
+            </ul>
+            <p v-else class="mt-2 text-xs text-gray-400">None</p>
+          </div>
+        </div>
       </div>
 
       <div class="rounded-lg bg-gray-800 p-4 sm:p-5">

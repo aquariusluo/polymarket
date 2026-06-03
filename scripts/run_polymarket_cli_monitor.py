@@ -16,7 +16,7 @@ LOCK_DIR = PROJECT_DIR / 'tmp' / 'polymarket-cli-monitor.lock'
 PID_FILE = LOCK_DIR / 'pid'
 LOG_PATH = PROJECT_DIR / 'tmp' / 'polymarket-cli-monitor.jsonl'
 PYTHON = PROJECT_DIR / '.venv' / 'bin' / 'python'
-STEPS = ['select-leaders', 'poll-trades', 'generate-signals', 'simulate', 'mark-to-market', 'daily-report', 'gate-report']
+STEPS = ['shadow-run', 'gate-report']
 PRUNE_STEP = 'prune-data'
 PRUNE_MARKER = PROJECT_DIR / 'tmp' / 'last-prune-date.txt'
 
@@ -71,8 +71,19 @@ def release_lock() -> None:
 def log_event(event: dict) -> None:
     LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     payload = {'timestamp': _utc_now(), **event}
-    with LOG_PATH.open('a', encoding='utf-8') as handle:
-        handle.write(json.dumps(payload, sort_keys=True) + '\n')
+    line = json.dumps(payload, sort_keys=True) + '\n'
+    try:
+        with LOG_PATH.open('a', encoding='utf-8') as handle:
+            handle.write(line)
+        return
+    except PermissionError:
+        # Recover if a prior log rotation recreated the file with a different owner.
+        try:
+            LOG_PATH.unlink()
+        except OSError:
+            raise
+        with LOG_PATH.open('a', encoding='utf-8') as handle:
+            handle.write(line)
 
 
 def step_timeout_seconds() -> int:

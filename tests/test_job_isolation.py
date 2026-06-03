@@ -17,6 +17,7 @@ from app.jobs import (
 )
 from app.domain.models import LeaderTrade
 from app.storage.db import get_connection, init_db
+from app.storage.repositories import SignalRepository
 
 
 def seed_snapshot(db_path: str):
@@ -66,6 +67,7 @@ def test_run_poll_trades_accepts_injected_client(tmp_path: Path, settings_factor
     result = run_poll_trades.run(settings, trades_client=DummyTradesClient())
 
     assert result['leaders_polled'] == 1
+    assert result['leaders_fetched'] == 1
     assert result['trades_inserted'] == 0
     assert result['leader_errors'] == 0
 
@@ -122,6 +124,7 @@ def test_run_poll_trades_continues_when_one_leader_fetch_fails(tmp_path: Path, s
 
     assert client.wallets_seen == ['0x1', '0x2']
     assert result['leaders_polled'] == 2
+    assert result['leaders_fetched'] == 2
     assert result['trades_inserted'] == 1
     assert result['trades_skipped'] == 0
     assert result['leader_errors'] == 1
@@ -205,6 +208,100 @@ def test_run_simulate_accepts_injected_services(tmp_path: Path, settings_factory
 
     assert result['filled'] == 1
     assert result['inserted_orders'] == 3
+
+
+def test_run_simulate_skips_work_in_alert_only_mode(tmp_path: Path, settings_factory):
+    db_path = tmp_path / 'simulate-alert-only.db'
+    init_db(str(db_path))
+    settings = settings_factory(str(db_path), scarf_execution_mode='alert_only')
+
+    with get_connection(str(db_path)) as conn:
+        conn.execute(
+            """
+            INSERT INTO leader_trades (
+                wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+                size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                '0x1', 'alice', '0xtx', 'cond1', 'asset_yes', 'BUY',
+                10.0, 0.57, datetime.now(timezone.utc).isoformat(),
+                'Will X happen?', 'will-x-happen', '{}', datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        trade_id = conn.execute('SELECT id FROM leader_trades ORDER BY id DESC LIMIT 1').fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO signals (
+                leader_trade_id, wallet, leader_name, condition_id, asset_id, market_slug,
+                side, leader_price, decision, reason, detected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade_id, '0x1', 'alice', 'cond1', 'asset_yes', 'will-x-happen',
+                'BUY', 0.57, 'accepted', 'accepted', datetime.now(timezone.utc).isoformat(), '{}',
+            ),
+        )
+        conn.commit()
+        assert len(SignalRepository(conn).list_pending_accepted()) == 1
+
+    class DummyMarketService:
+        def __init__(self, conn, settings=None):
+            raise AssertionError('market service should not be constructed in alert_only mode')
+
+    class DummySimulationService:
+        def __init__(self, conn, settings, market_service):
+            raise AssertionError('simulation service should not be constructed in alert_only mode')
+
+    result = run_simulate.run(settings, market_service_cls=DummyMarketService, simulation_service_cls=DummySimulationService)
+
+    assert result['processed'] == 1
+    assert result['filled'] == 0
+    assert result['rejected'] == 0
+    assert result['inserted_orders'] == 1
+    assert result['suppressed'] == 1
+
+    with get_connection(str(db_path)) as conn:
+        assert len(SignalRepository(conn).list_pending_accepted()) == 0
+        row = conn.execute('SELECT status, reason FROM sim_orders').fetchone()
+        assert dict(row) == {'status': 'suppressed', 'reason': 'execution_mode_alert_only'}
+
+
+def test_run_poll_trades_excludes_wallets_with_whitespace_without_changing_polled_semantics(tmp_path: Path, settings_factory):
+    db_path = tmp_path / 'poll-excluded-whitespace.db'
+    init_db(str(db_path))
+    settings = settings_factory(str(db_path), scarf_excluded_wallets=(' 0x1 ',))
+    selected_at = datetime.now(timezone.utc).isoformat()
+    with get_connection(str(db_path)) as conn:
+        conn.executemany(
+            """
+            INSERT INTO leaders (
+                rank, wallet, name, pseudonym, pnl_snapshot, volume_snapshot,
+                selection_run_id, selected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (1, '0x1', 'alice', 'alice', None, None, 'run-1', selected_at, '{}'),
+                (2, '0x2', 'bob', 'bob', None, None, 'run-1', selected_at, '{}'),
+            ],
+        )
+        conn.commit()
+
+    class DummyTradesClient:
+        def __init__(self):
+            self.wallets_seen = []
+
+        def fetch_recent_trades(self, **kwargs):
+            self.wallets_seen.append(kwargs['wallet'])
+            return []
+
+    client = DummyTradesClient()
+    result = run_poll_trades.run(settings, trades_client=client)
+
+    assert client.wallets_seen == ['0x2']
+    assert result['leaders_polled'] == 2
+    assert result['leaders_fetched'] == 1
+    assert result['leaders_excluded'] == 1
 
 
 def test_run_mark_to_market_accepts_injected_services(tmp_path: Path, settings_factory):

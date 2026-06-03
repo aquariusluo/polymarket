@@ -54,22 +54,31 @@ class MarketClient:
         return payload
 
     def _split_yes_no_tokens(self, tokens: list[Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
         yes: dict[str, Any] = {}
         no: dict[str, Any] = {}
 
         for token in tokens:
             if not isinstance(token, dict):
                 continue
-            outcome = str(token.get("outcome") or "").strip().lower()
-            if outcome == "yes":
+            token_id = token.get("token_id") or token.get("tokenId")
+            outcome = token.get("outcome")
+            if token_id in (None, "") or outcome in (None, ""):
+                continue
+            normalized.append(token)
+            outcome_text = str(outcome).strip().lower()
+            if outcome_text == "yes":
                 yes = token
-            elif outcome == "no":
+            elif outcome_text == "no":
                 no = token
 
-        if not yes or not no:
-            raise UnsupportedMarketError(f"Unable to determine yes/no token mapping from tokens: {tokens}")
+        if yes and no:
+            return yes, no
 
-        return yes, no
+        if len(normalized) == 2:
+            return normalized[0], normalized[1]
+
+        raise UnsupportedMarketError(f"Unable to determine binary token mapping from tokens: {tokens}")
 
     def fetch_market(self, condition_id: str) -> MarketInfo:
         gamma = self.fetch_gamma_market(condition_id) or {}

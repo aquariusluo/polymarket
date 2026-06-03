@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.domain.models import Decision, LeaderTrade, MarketInfo, SignalDecision, normalize_side
+from app.domain.models import Decision, LeaderTrade, MarketInfo, MISSING_CONDITION_ID, SignalDecision, normalize_side
+
+FUTURE_TIMESTAMP_TOLERANCE_MINUTES = 5.0
 
 
 class TradeFilter:
@@ -16,7 +18,7 @@ class TradeFilter:
         if side is None or side.name != 'BUY':
             return SignalDecision(
                 leader_trade_id=trade_id,
-                condition_id=trade.condition_id or 'missing-condition-id',
+                condition_id=trade.condition_id or MISSING_CONDITION_ID,
                 asset_id=trade.asset_id,
                 decision=Decision.REJECTED,
                 reason='side_not_buy',
@@ -28,7 +30,7 @@ class TradeFilter:
         if trade.condition_id is None:
             return SignalDecision(
                 leader_trade_id=trade_id,
-                condition_id='missing-condition-id',
+                condition_id=MISSING_CONDITION_ID,
                 asset_id=trade.asset_id,
                 decision=Decision.REJECTED,
                 reason='missing_condition_id',
@@ -74,6 +76,18 @@ class TradeFilter:
             )
 
         age_minutes = (datetime.now(timezone.utc) - trade.timestamp.astimezone(timezone.utc)).total_seconds() / 60.0
+        if age_minutes < -FUTURE_TIMESTAMP_TOLERANCE_MINUTES:
+            return SignalDecision(
+                leader_trade_id=trade_id,
+                condition_id=trade.condition_id,
+                asset_id=trade.asset_id,
+                decision=Decision.REJECTED,
+                reason='trade_timestamp_in_future',
+                side=side,
+                price=trade.price,
+                market_slug=market.slug or trade.market_slug,
+            )
+
         if age_minutes > self.max_trade_age_minutes:
             return SignalDecision(
                 leader_trade_id=trade_id,

@@ -134,6 +134,20 @@ def test_signal_repository_handles_expired_cooldown_and_multiple_decisions(db_co
     assert signal_repo.counts() == {'accepted': 1, 'rejected': 1}
 
 
+def test_signal_repository_pending_rows_include_exact_trade_timestamp(db_conn, insert_signal_for_trade):
+    inserted, signal_row = insert_signal_for_trade()
+    assert inserted is True
+
+    trade_row = db_conn.execute(
+        'SELECT timestamp FROM leader_trades WHERE id = ?',
+        (signal_row['leader_trade_id'],),
+    ).fetchone()
+    pending = SignalRepository(db_conn).list_pending_accepted()
+
+    assert len(pending) == 1
+    assert pending[0]['trade_timestamp'] == trade_row['timestamp']
+
+
 def test_sim_order_repository_count_helpers_and_pending_signal_interaction(db_conn, insert_signal_for_trade):
     _, signal_row = insert_signal_for_trade()
     repo = SimOrderRepository(db_conn)

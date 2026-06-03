@@ -16,6 +16,8 @@ class DummySimulationSettings:
     fixed_trade_usdc = 0.30
     per_market_cap_usdc = 10.0
     max_slippage_pct = 15.0
+    max_trade_age_minutes = 60
+    max_trade_age_at_fill_minutes = 60
     scarf = ScarfConfig(bankroll_usd=10.0, max_daily_orders=10)
 
 

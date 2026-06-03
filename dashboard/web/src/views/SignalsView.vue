@@ -175,31 +175,37 @@ async function fetch() {
       </button>
     </div>
 
-    <table v-if="filteredSignals.length" class="hidden w-full text-sm sm:table">
-      <thead>
-        <tr class="text-left text-gray-400 border-b border-gray-700">
-          <th class="pb-2">Leader</th>
-          <th class="pb-2">Market</th>
-          <th class="pb-2">Side</th>
-          <th class="pb-2">Decision</th>
-          <th class="pb-2">Order Status</th>
-          <th class="pb-2">Detected</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="s in filteredSignals" :key="s.id" class="border-b border-gray-800 text-gray-300">
-          <td class="py-2">{{ displayLeader(s) }}</td>
-          <td class="py-2">{{ s.market_slug }}</td>
-          <td class="py-2">{{ s.side }}</td>
-          <td class="py-2"><StatusBadge :status="s.decision" /></td>
-          <td class="py-2">
-            <StatusBadge v-if="s.order_status" :status="s.order_status" />
-            <span v-else class="text-gray-400">—</span>
-          </td>
-          <td class="py-2 text-gray-400">{{ new Date(s.detected_at).toLocaleString() }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div v-if="filteredSignals.length" class="overflow-x-auto">
+      <table class="hidden w-full min-w-max text-sm sm:table">
+        <thead>
+          <tr class="text-left text-gray-400 border-b border-gray-700">
+            <th class="pb-2">Leader</th>
+            <th class="pb-2">Market</th>
+            <th class="pb-2">Side</th>
+            <th class="pb-2">Decision</th>
+            <th class="pb-2">Signal Reason</th>
+            <th class="pb-2">Order Status</th>
+            <th class="pb-2">Order Reason</th>
+            <th class="pb-2">Detected</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="s in filteredSignals" :key="s.id" class="border-b border-gray-800 text-gray-300">
+            <td class="py-2">{{ displayLeader(s) }}</td>
+            <td class="py-2">{{ s.market_slug }}</td>
+            <td class="py-2">{{ s.side }}</td>
+            <td class="py-2"><StatusBadge :status="s.decision" /></td>
+            <td class="max-w-[12rem] truncate py-2 text-xs text-gray-400" :title="s.reason || ''">{{ s.reason || '—' }}</td>
+            <td class="py-2">
+              <StatusBadge v-if="s.order_status" :status="s.order_status" />
+              <span v-else class="text-gray-400">—</span>
+            </td>
+            <td class="max-w-[12rem] truncate py-2 text-xs text-gray-400" :title="s.order_reason || ''">{{ s.order_reason || '—' }}</td>
+            <td class="py-2 text-gray-400">{{ new Date(s.detected_at).toLocaleString() }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
     <div v-else-if="signalQuery.trim() && !isLoading && !error" class="py-12 text-center text-gray-400">
       No signals match "{{ signalQuery }}".
     </div>

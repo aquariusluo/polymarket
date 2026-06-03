@@ -44,6 +44,19 @@ def test_should_skip_prune_when_disabled(tmp_path, monkeypatch):
     assert monitor.should_run_prune() is False
 
 
+def test_log_event_recovers_from_permission_error_by_recreating_file(tmp_path, monkeypatch):
+    monitor = _load_monitor_module()
+    log_path = tmp_path / 'polymarket-cli-monitor.jsonl'
+    log_path.write_text('stale\n', encoding='utf-8')
+    log_path.chmod(0o444)
+    monkeypatch.setattr(monitor, 'LOG_PATH', log_path)
+
+    monitor.log_event({'event': 'recovered'})
+
+    text = log_path.read_text(encoding='utf-8')
+    assert '"event": "recovered"' in text
+
+
 def test_main_still_runs_daily_prune_when_pipeline_step_fails(monkeypatch):
     monitor = _load_monitor_module()
     calls: list[str] = []
@@ -171,3 +184,34 @@ def test_main_handles_prune_exception_as_non_blocking(monkeypatch):
     code = monitor.main()
     assert code == 0
     assert any(event.get('event') == 'daily_prune_exception' for event in events)
+
+
+def test_main_runs_shadow_then_gate_before_prune(monkeypatch):
+    monitor = _load_monitor_module()
+    calls: list[str] = []
+
+    monkeypatch.setattr(monitor, 'acquire_lock', lambda: True)
+    monkeypatch.setattr(monitor, 'release_lock', lambda: None)
+    monkeypatch.setattr(monitor.signal, 'signal', lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        monitor,
+        'build_env',
+        lambda: {
+            'DATA_SOURCE': 'test',
+            'TRADE_FETCH_LIMIT': '5',
+            'SIGNAL_BATCH_LIMIT': '10',
+        },
+    )
+    monkeypatch.setattr(monitor, 'log_event', lambda event: None)
+
+    def _run_step(step, env, timeout_seconds=None):
+        calls.append(step)
+        return {'step': step, 'returncode': 0}
+
+    monkeypatch.setattr(monitor, 'run_step', _run_step)
+    monkeypatch.setattr(monitor, 'run_daily_prune', lambda env: calls.append(monitor.PRUNE_STEP) or 0)
+
+    code = monitor.main()
+
+    assert code == 0
+    assert calls == ['shadow-run', 'gate-report', monitor.PRUNE_STEP]

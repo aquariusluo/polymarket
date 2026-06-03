@@ -65,6 +65,26 @@ def test_daily_report_job_writes_latest_summary_markdown_and_json(tmp_path: Path
     settings = settings_factory(str(db_path))
 
     with get_connection(str(db_path)) as conn:
+        detected_at = '2030-01-01T00:00:00+00:00'
+        conn.execute(
+            """
+            INSERT INTO leader_trades (
+                wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+                size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ('0x1', 'alice', '0xtx-report-1', 'cond1', 'asset_yes', 'BUY', 1.0, 0.5, detected_at, 'Market', 'slug', '{}', detected_at),
+        )
+        trade_id = conn.execute("SELECT id FROM leader_trades WHERE transaction_hash = '0xtx-report-1'").fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO signals (
+                leader_trade_id, wallet, leader_name, condition_id, asset_id,
+                market_slug, side, leader_price, decision, reason, detected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (trade_id, '0x1', 'alice', 'cond1', 'asset_yes', 'slug', 'BUY', 0.5, 'rejected', 'wallet_excluded', detected_at, '{}'),
+        )
         conn.execute(
             """
             INSERT INTO portfolio_snapshots (
@@ -85,7 +105,11 @@ def test_daily_report_job_writes_latest_summary_markdown_and_json(tmp_path: Path
     assert latest_json.exists()
     assert result['report_markdown_path'].endswith('latest-summary.md')
     assert result['report_json_path'].endswith('latest-summary.json')
-    assert 'Latest Trade Follow Summary' in latest_md.read_text(encoding='utf-8')
+    latest_text = latest_md.read_text(encoding='utf-8')
+    assert 'Latest Trade Follow Summary' in latest_text
+    assert 'Signal Reject Reasons: wallet_excluded=1' in latest_text
+    assert 'Execution Rejections: none' in latest_text
+    assert 'Execution Suppressions: none' in latest_text
     payload = json.loads(latest_json.read_text(encoding='utf-8'))
     assert payload['total_equity'] == 110.0
 
@@ -101,6 +125,37 @@ def test_final_report_job_writes_performance_review_markdown_and_json(tmp_path: 
     settings = settings_factory(str(db_path))
 
     with get_connection(str(db_path)) as conn:
+        detected_at = '2030-01-15T00:00:00+00:00'
+        conn.execute(
+            """
+            INSERT INTO leader_trades (
+                wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+                size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ('0x1', 'alice', '0xtx-review-1', 'cond1', 'asset_yes', 'BUY', 1.0, 0.5, detected_at, 'Market', 'slug', '{}', detected_at),
+        )
+        trade_id = conn.execute("SELECT id FROM leader_trades WHERE transaction_hash = '0xtx-review-1'").fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO signals (
+                leader_trade_id, wallet, leader_name, condition_id, asset_id,
+                market_slug, side, leader_price, decision, reason, detected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (trade_id, '0x1', 'alice', 'cond1', 'asset_yes', 'slug', 'BUY', 0.5, 'accepted', 'accepted', detected_at, '{}'),
+        )
+        signal_id = conn.execute('SELECT id FROM signals WHERE leader_trade_id = ?', (trade_id,)).fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO sim_orders (
+                signal_id, condition_id, asset_id, market_slug, side, requested_notional,
+                filled_notional, filled_shares, fill_price, leader_price, slippage_pct,
+                status, reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (signal_id, 'cond1', 'asset_yes', 'slug', 'BUY', '10.00', '0.00', '0.000000', None, '0.500000', None, 'suppressed', 'execution_mode_alert_only', detected_at),
+        )
         conn.execute(
             """
             INSERT INTO portfolio_snapshots (
@@ -130,7 +185,11 @@ def test_final_report_job_writes_performance_review_markdown_and_json(tmp_path: 
     assert review_json.exists()
     assert result['report_markdown_path'].endswith('performance-review.md')
     assert result['report_json_path'].endswith('performance-review.json')
-    assert '60-Day Review Notes' in review_md.read_text(encoding='utf-8')
+    review_text = review_md.read_text(encoding='utf-8')
+    assert '60-Day Review Notes' in review_text
+    assert 'Signal Reject Reasons: none' in review_text
+    assert 'Execution Rejections: none' in review_text
+    assert 'Execution Suppressions: execution_mode_alert_only=1' in review_text
     payload = json.loads(review_json.read_text(encoding='utf-8'))
     assert payload['ending_equity'] == 125.0
 
@@ -226,3 +285,77 @@ def test_gate_report_passes_when_recent_fills_meet_thresholds(tmp_path: Path, se
     payload = json.loads((report_dir / 'auto-follow-gate.json').read_text(encoding='utf-8'))
     assert payload['filled_orders_window'] == 10
     assert payload['notes'] == ['All gate conditions met in current window.']
+
+
+def test_shadow_evidence_job_writes_markdown_and_json(tmp_path: Path, settings_factory):
+    from app.jobs import run_shadow_evidence
+
+    project_dir = tmp_path / 'project'
+    report_dir = project_dir / '.scarf' / 'reports'
+    report_dir.mkdir(parents=True)
+    db_path = project_dir / 'data.db'
+    init_db(str(db_path))
+    settings = settings_factory(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        detected_at = '2030-01-01T00:00:00+00:00'
+        conn.execute(
+            """
+            INSERT INTO leader_trades (
+                wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+                size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ('0x1', 'alice', '0xtx-shadow-1', 'cond1', 'asset_yes', 'BUY', 1.0, 0.5, detected_at, 'Market', 'slug', '{}', detected_at),
+        )
+        trade_id = conn.execute("SELECT id FROM leader_trades WHERE transaction_hash = '0xtx-shadow-1'").fetchone()[0]
+        conn.execute(
+            """
+            INSERT INTO signals (
+                leader_trade_id, wallet, leader_name, condition_id, asset_id,
+                market_slug, side, leader_price, decision, reason, detected_at, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade_id,
+                '0x1',
+                'alice',
+                'cond1',
+                'asset_yes',
+                'slug',
+                'BUY',
+                0.5,
+                'rejected',
+                'market_unsupported',
+                detected_at,
+                '{"signal_evidence":{"stage":"market_lookup","category":"market_lookup","decision":"rejected","reason":"market_unsupported"}}',
+            ),
+        )
+        conn.execute(
+            """
+            INSERT INTO portfolio_snapshots (
+                captured_at, total_cost_basis, total_market_value,
+                total_unrealized_pnl, total_realized_pnl, total_equity, drawdown_pct, raw_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (detected_at, 100.0, 100.0, 0.0, 0.0, 100.0, 0.0, '{"positions": []}'),
+        )
+        conn.commit()
+
+    result = run_shadow_evidence.run(settings, project_root=str(project_dir))
+
+    shadow_md = report_dir / 'shadow-evidence.md'
+    shadow_json = report_dir / 'shadow-evidence.json'
+
+    assert shadow_md.exists()
+    assert shadow_json.exists()
+    assert result['report_markdown_path'].endswith('shadow-evidence.md')
+    assert result['report_json_path'].endswith('shadow-evidence.json')
+    shadow_text = shadow_md.read_text(encoding='utf-8')
+    assert 'Shadow Evidence Report' in shadow_text
+    assert 'Strategy Verdict: failing' in shadow_text
+    assert 'Universe Quality Reasons: market_unsupported=1' in shadow_text
+    assert 'Signal Evidence Counts: market_lookup(market_lookup=1)' in shadow_text
+    payload = json.loads(shadow_json.read_text(encoding='utf-8'))
+    assert payload['strategy_verdict'] == 'failing'
+    assert payload['signal_evidence_counts'] == {'market_lookup': {'market_lookup': 1}}

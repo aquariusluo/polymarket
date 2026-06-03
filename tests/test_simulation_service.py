@@ -7,17 +7,21 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.config import ScarfConfig
+from app.config import ScarfConfig, Settings
 from app.domain.models import Decision, MarketInfo, Side, SignalDecision
+from app.services.signal_service import SignalService
 from app.services.simulation_service import SimulationService
 from app.storage.db import get_connection, init_db
-from app.storage.repositories import SignalRepository
+from app.storage.repositories import PortfolioSnapshotRepository, SignalRepository
 
 
 class DummySettings:
     fixed_trade_usdc = 100.0
     per_market_cap_usdc = 300.0
     max_slippage_pct = 2.0
+    max_signal_age_minutes = 15
+    max_trade_age_minutes = 60
+    max_trade_age_at_fill_minutes = 60
     scarf = ScarfConfig(bankroll_usd=1000.0, max_daily_orders=10)
 
 
@@ -311,6 +315,64 @@ def test_simulation_service_rejects_slippage_too_high(tmp_path: Path):
         assert row['reason'] == 'slippage_too_high'
 
 
+def test_simulation_service_allows_favorable_slippage(tmp_path: Path):
+    db_path = tmp_path / 'favorable-slippage.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn, price=0.60)
+
+        result = SimulationService(
+            conn,
+            DummySettings(),
+            DummyMarketService(DummyMarketClient(asks=[{'price': 0.50, 'size': 500.0}])),
+        ).run()
+
+        assert result.filled_count == 1
+        row = conn.execute('SELECT status, reason, slippage_pct FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'filled'
+        assert row['reason'] == 'filled'
+        assert Decimal(str(row['slippage_pct'])) < 0
+
+
+def test_simulation_service_accounts_for_realized_pnl_in_bankroll(tmp_path: Path):
+    db_path = tmp_path / 'realized-bankroll.db'
+    init_db(str(db_path))
+
+    class BankrollSettings(DummySettings):
+        scarf = ScarfConfig(bankroll_usd=250.0, max_daily_orders=10)
+
+    with get_connection(str(db_path)) as conn:
+        conn.execute(
+            """
+            INSERT INTO positions (
+                condition_id, asset_id, market_slug, side, shares, avg_cost, cost_basis, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                'cond-existing', 'asset-existing', 'market-existing', 'BUY', 150.0, 1.0, 200.0,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        PortfolioSnapshotRepository(conn).insert(
+            total_cost_basis=200.0,
+            total_market_value=200.0,
+            total_unrealized_pnl=0.0,
+            total_realized_pnl=-100.0,
+            total_equity=150.0,
+            drawdown_pct=0.0,
+            raw_json={'positions': []},
+        )
+        _insert_signal(conn)
+
+        result = SimulationService(conn, BankrollSettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'rejected'
+        assert row['reason'] == 'bankroll_exceeded'
+
+
 def test_simulation_service_rejects_unsupported_side(tmp_path: Path):
     db_path = tmp_path / 'unsupported-side.db'
     init_db(str(db_path))
@@ -324,3 +386,258 @@ def test_simulation_service_rejects_unsupported_side(tmp_path: Path):
         row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
         assert row['status'] == 'rejected'
         assert row['reason'] == 'unsupported_side'
+
+
+def test_simulation_service_rejects_stale_signal_by_detected_at(tmp_path: Path):
+    db_path = tmp_path / 'stale-signal.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        stale_detected_at = (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat()
+        conn.execute('UPDATE signals SET detected_at = ?', (stale_detected_at,))
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'rejected'
+        assert row['reason'] == 'signal_stale'
+
+
+def test_simulation_service_allows_fresh_signal_within_ttl(tmp_path: Path):
+    db_path = tmp_path / 'fresh-signal.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        fresh_detected_at = (datetime.now(timezone.utc) - timedelta(minutes=14)).isoformat()
+        conn.execute('UPDATE signals SET detected_at = ?', (fresh_detected_at,))
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.filled_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'filled'
+        assert row['reason'] == 'filled'
+
+
+def test_simulation_service_rejects_unparseable_detected_at_as_stale(tmp_path: Path):
+    db_path = tmp_path / 'bad-detected-at.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        conn.execute("UPDATE signals SET detected_at = 'not-a-date'")
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'rejected'
+        assert row['reason'] == 'signal_stale'
+
+
+def test_simulation_service_ttl_window_treats_just_inside_limit_as_fresh(tmp_path: Path):
+    db_path = tmp_path / 'ttl-boundary.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        exact_boundary = (datetime.now(timezone.utc) - timedelta(minutes=15) + timedelta(seconds=1)).isoformat()
+        conn.execute('UPDATE signals SET detected_at = ?', (exact_boundary,))
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.filled_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'filled'
+        assert row['reason'] == 'filled'
+
+
+def test_simulation_service_rejects_old_trade_even_when_signal_detection_is_fresh(tmp_path: Path):
+    db_path = tmp_path / 'stale-trade-fresh-signal.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        stale_trade_time = (datetime.now(timezone.utc) - timedelta(minutes=61)).isoformat()
+        fresh_detected_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        conn.execute('UPDATE leader_trades SET timestamp = ?', (stale_trade_time,))
+        conn.execute('UPDATE signals SET detected_at = ?', (fresh_detected_at,))
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'rejected'
+        assert row['reason'] == 'trade_too_old_at_fill'
+
+
+def test_simulation_service_uses_dedicated_fill_trade_age_limit(tmp_path: Path):
+    db_path = tmp_path / 'dedicated-fill-trade-age.db'
+    init_db(str(db_path))
+
+    class DivergentAgeSettings(DummySettings):
+        max_trade_age_minutes = 60
+        max_trade_age_at_fill_minutes = 15
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        trade_time = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        detected_at = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        conn.execute('UPDATE leader_trades SET timestamp = ?', (trade_time,))
+        conn.execute('UPDATE signals SET detected_at = ?', (detected_at,))
+        conn.commit()
+
+        result = SimulationService(conn, DivergentAgeSettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert row['status'] == 'rejected'
+        assert row['reason'] == 'trade_too_old_at_fill'
+
+
+def test_settings_programmatic_fill_age_falls_back_to_trade_age():
+    settings = Settings(
+        app_env='test',
+        db_path=':memory:',
+        leaderboard_category='overall',
+        leaderboard_time='30d',
+        leaderboard_sort='profit',
+        top_n=5,
+        poll_interval_seconds=10,
+        trade_fetch_limit=50,
+        min_time_to_expiry_hours=24,
+        min_market_liquidity=10000,
+        signal_cooldown_minutes=5,
+        max_trade_age_minutes=30,
+    )
+
+    assert settings.max_trade_age_at_fill_minutes is None
+    assert settings.effective_max_trade_age_at_fill_minutes == 30
+
+
+def test_signal_generation_can_accept_trade_that_fill_time_gate_rejects(tmp_path: Path):
+    db_path = tmp_path / 'signal-accepts-fill-rejects.db'
+    init_db(str(db_path))
+    settings = Settings(
+        app_env='test',
+        db_path=str(db_path),
+        leaderboard_category='overall',
+        leaderboard_time='30d',
+        leaderboard_sort='profit',
+        top_n=5,
+        poll_interval_seconds=10,
+        trade_fetch_limit=50,
+        min_time_to_expiry_hours=24,
+        min_market_liquidity=10000,
+        signal_cooldown_minutes=5,
+        signal_batch_limit=500,
+        max_trade_age_minutes=60,
+        max_trade_age_at_fill_minutes=15,
+        max_signal_age_minutes=15,
+        fixed_trade_usdc=100.0,
+        per_market_cap_usdc=300.0,
+        max_slippage_pct=2.0,
+        scarf_execution_mode='manual_confirm',
+        scarf_bankroll_usd=1000.0,
+        max_daily_orders=10,
+    )
+
+    with get_connection(str(db_path)) as conn:
+        trade_timestamp = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        conn.execute(
+            """
+            INSERT INTO leader_trades (
+                wallet, leader_name, transaction_hash, condition_id, asset_id, side,
+                size, price, timestamp, market_title, market_slug, raw_json, ingested_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                '0x1', 'alice', '0xdivergent', 'cond1', 'asset_yes', 'BUY',
+                10.0, 0.57, trade_timestamp,
+                'Will X happen?', 'will-x-happen', '{}', datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        conn.commit()
+
+        signal_result = SignalService(conn, settings, DummyMarketService()).run()
+        assert signal_result.accepted_count == 1
+
+        signal_row = conn.execute('SELECT decision, reason FROM signals ORDER BY id DESC LIMIT 1').fetchone()
+        assert dict(signal_row) == {'decision': 'accepted', 'reason': 'accepted'}
+
+        simulation_result = SimulationService(conn, settings, DummyMarketService()).run()
+        assert simulation_result.rejected_count == 1
+
+        sim_order = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert dict(sim_order) == {'status': 'rejected', 'reason': 'trade_too_old_at_fill'}
+
+
+def test_signal_repository_pending_rows_include_trade_timestamp(db_conn, insert_signal_for_trade):
+    inserted, signal_row = insert_signal_for_trade()
+    assert inserted is True
+
+    pending = SignalRepository(db_conn).list_pending_accepted()
+
+    assert len(pending) == 1
+    assert pending[0]['id'] == signal_row['id']
+    assert pending[0]['trade_timestamp'] is not None
+
+
+def test_simulation_service_rejects_future_dated_detected_at(tmp_path: Path):
+    db_path = tmp_path / 'future-detected-at.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        future_detected_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        conn.execute('UPDATE signals SET detected_at = ?', (future_detected_at,))
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert dict(row) == {'status': 'rejected', 'reason': 'signal_timestamp_in_future'}
+
+
+def test_simulation_service_rejects_future_dated_trade_timestamp(tmp_path: Path):
+    db_path = tmp_path / 'future-trade-timestamp.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        future_trade_time = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        conn.execute('UPDATE leader_trades SET timestamp = ?', (future_trade_time,))
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert dict(row) == {'status': 'rejected', 'reason': 'trade_timestamp_in_future'}
+
+
+def test_simulation_service_rejects_orphan_signal_fail_closed(tmp_path: Path):
+    db_path = tmp_path / 'orphan-signal.db'
+    init_db(str(db_path))
+
+    with get_connection(str(db_path)) as conn:
+        _insert_signal(conn)
+        conn.execute('PRAGMA foreign_keys = OFF')
+        conn.execute('DELETE FROM leader_trades')
+        conn.execute('PRAGMA foreign_keys = ON')
+        conn.commit()
+
+        result = SimulationService(conn, DummySettings(), DummyMarketService()).run()
+
+        assert result.rejected_count == 1
+        row = conn.execute('SELECT status, reason FROM sim_orders ORDER BY id DESC LIMIT 1').fetchone()
+        assert dict(row) == {'status': 'rejected', 'reason': 'trade_too_old_at_fill'}

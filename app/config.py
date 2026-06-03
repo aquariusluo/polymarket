@@ -62,6 +62,8 @@ class Settings:
     data_source: str = 'http'
     signal_batch_limit: int = 500
     max_trade_age_minutes: int = 60
+    max_trade_age_at_fill_minutes: int | None = None
+    max_signal_age_minutes: int = 15
     fixed_trade_usdc: float = 100.0
     per_market_cap_usdc: float = 300.0
     max_slippage_pct: float = 2.0
@@ -82,6 +84,12 @@ class Settings:
     scarf_leader_selection_mode: str = 'live_top5'
     scarf_leaderboard_source: str = 'Polymarket profit leaderboard'
     scarf_evaluation_start_date: str = ''
+
+    @property
+    def effective_max_trade_age_at_fill_minutes(self) -> int:
+        if self.max_trade_age_at_fill_minutes is None:
+            return int(self.max_trade_age_minutes)
+        return int(self.max_trade_age_at_fill_minutes)
 
     @property
     def scarf(self) -> ScarfConfig:
@@ -139,6 +147,8 @@ def get_settings(project_root=None) -> Settings:
         signal_cooldown_minutes=int(_env('SIGNAL_COOLDOWN_MINUTES', '5')),
         signal_batch_limit=int(_env('SIGNAL_BATCH_LIMIT', '500')),
         max_trade_age_minutes=int(_env('MAX_TRADE_AGE_MINUTES', '60')),
+        max_trade_age_at_fill_minutes=int(_env('MAX_TRADE_AGE_AT_FILL_MINUTES', _env('MAX_TRADE_AGE_MINUTES', '60'))),
+        max_signal_age_minutes=int(_env('MAX_SIGNAL_AGE_MINUTES', '15')),
         fixed_trade_usdc=float(_env('FIXED_TRADE_USDC', str(fixed_trade_default))),
         per_market_cap_usdc=float(_env('PER_MARKET_CAP_USDC', '300')),
         max_slippage_pct=max_slippage_pct,

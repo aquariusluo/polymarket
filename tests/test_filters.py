@@ -119,6 +119,13 @@ def test_filter_rejects_stale_trade():
     assert decision.reason == 'trade_too_old'
 
 
+def test_filter_rejects_future_dated_trade():
+    future_trade = make_trade()
+    future_trade.timestamp = datetime.now(timezone.utc) + timedelta(minutes=10)
+    decision = make_filter().evaluate(1, future_trade, make_market())
+    assert decision.reason == 'trade_timestamp_in_future'
+
+
 
 def test_filter_returns_enum_backed_decision_and_side():
     decision = make_filter().evaluate(1, make_trade(side='BUY'), make_market())
